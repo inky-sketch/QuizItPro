@@ -1,0 +1,1245 @@
+<!DOCTYPE html>
+<html lang="en" class="">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuizIt - Study Smarter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        qBlue: '#4255ff',
+                        qCyan: '#3ccfcf',
+                        qDark: '#0a092d',
+                        qLightBg: '#f6f7fb',
+                        qDarkBg: '#13122b',
+                        qCardLight: '#ffffff',
+                        qCardDark: '#1e1c3a',
+                        qBorderLight: '#d9dde8',
+                        qBorderDark: '#2e2b58',
+                        qGreen: '#23b26d',
+                        qRed: '#ff7777'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .perspective-1000 { perspective: 1000px; }
+        .transform-style-3d { transform-style: preserve-3d; }
+        .backface-hidden { backface-visibility: hidden; }
+        .rotate-y-180 { transform: rotateY(180deg); }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .dark ::-webkit-scrollbar-thumb { background: #475569; }
+    </style>
+</head>
+<body class="bg-qLightBg dark:bg-qDarkBg text-slate-800 dark:text-slate-100 min-h-screen flex font-sans select-none transition-colors duration-200">
+
+    <aside id="sidebar" class="w-64 bg-white dark:bg-[#181632] border-r border-qBorderLight dark:border-qBorderDark flex flex-col fixed inset-y-0 left-0 z-40 transition-transform -translate-x-full md:translate-x-0">
+        <div class="p-6 flex items-center justify-between border-b border-qBorderLight dark:border-qBorderDark">
+            <h1 onclick="window.router.navigate('dashboard')" class="text-2xl font-black text-qBlue tracking-wider cursor-pointer flex items-center gap-2">
+                QuizIt <span class="text-[10px] bg-qBlue text-white px-1.5 py-0.5 rounded font-mono">PRO</span>
+            </h1>
+            <button onclick="toggleSidebar()" class="md:hidden text-gray-500 hover:text-qBlue">✕</button>
+        </div>
+
+        <nav class="flex-1 p-4 space-y-1 overflow-y-auto">
+            <button onclick="window.router.navigate('dashboard')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm hover:bg-slate-100 dark:hover:bg-slate-800 transition nav-btn" data-view="dashboard">
+                🏠 Home
+            </button>
+            <button onclick="window.router.navigate('library')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm hover:bg-slate-100 dark:hover:bg-slate-800 transition nav-btn" data-view="library">
+                📚 Library & Sets
+            </button>
+            <button onclick="window.router.navigate('folders')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm hover:bg-slate-100 dark:hover:bg-slate-800 transition nav-btn" data-view="folders">
+                📁 Folders
+            </button>
+            <button onclick="window.router.navigate('creator')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm hover:bg-slate-100 dark:hover:bg-slate-800 transition nav-btn text-qBlue" data-view="creator">
+                ➕ Create New Set
+            </button>
+        </nav>
+
+        <div class="p-4 border-t border-qBorderLight dark:border-qBorderDark space-y-2">
+            <div class="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs font-semibold">
+                <span>Dark Mode</span>
+                <button onclick="toggleDarkMode()" id="dark-mode-btn" class="px-3 py-1 bg-qBlue text-white rounded-lg transition shadow-sm">Toggle</button>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="openImportModal()" class="flex-1 text-xs bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 font-semibold py-2 rounded-xl transition text-center">Import</button>
+                <button onclick="openShareCodeModal()" class="flex-1 text-xs bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 font-semibold py-2 rounded-xl transition text-center">Share Code</button>
+            </div>
+            <button onclick="exportAllData()" class="w-full text-xs bg-red-50 dark:bg-red-950/30 text-red-500 font-semibold py-2 rounded-xl transition text-center">Backup All Data</button>
+        </div>
+    </aside>
+
+    <div class="flex-1 flex flex-col md:ml-64 min-h-screen">
+        <header class="bg-white/80 dark:bg-[#181632]/80 backdrop-blur-md border-b border-qBorderLight dark:border-qBorderDark h-16 px-6 flex items-center justify-between sticky top-0 z-30">
+            <div class="flex items-center gap-4">
+                <button onclick="toggleSidebar()" class="md:hidden text-xl p-2">☰</button>
+                <div class="relative w-48 sm:w-80">
+                    <input type="text" id="global-search" oninput="handleGlobalSearch(this.value)" placeholder="Search sets, terms..." class="w-full bg-slate-100 dark:bg-slate-800 border border-qBorderLight dark:border-qBorderDark rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-qBlue outline-none transition">
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <div id="streak-badge" class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-orange-500/10 text-orange-500 rounded-xl text-xs font-bold">
+                    🔥 <span id="streak-count">0</span> Day Streak
+                </div>
+                <button onclick="window.router.navigate('creator')" class="bg-qBlue hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl text-sm transition shadow-sm">+ Create</button>
+            </div>
+        </header>
+
+        <main id="app" class="flex-1 p-4 sm:p-8 max-w-7xl w-full mx-auto">
+            <!-- Dynamic Views Loaded Here -->
+        </main>
+    </div>
+
+    <div id="custom-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+        <div class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <h3 id="modal-title" class="text-xl font-black">Notice</h3>
+            <p id="modal-msg" class="text-sm text-slate-500 dark:text-slate-400"></p>
+            <div id="modal-custom-content"></div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button id="modal-cancel-btn" onclick="closeModal()" class="px-4 py-2 bg-slate-100 dark:bg-slate-800 font-semibold rounded-xl text-sm hover:bg-slate-200">Cancel</button>
+                <button id="modal-ok-btn" onclick="closeModal()" class="px-4 py-2 bg-qBlue text-white font-bold rounded-xl text-sm hover:bg-blue-700">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            const now = audioCtx.currentTime;
+            if (type === 'success') {
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(440, now);
+                osc.frequency.exponentialRampToValueAtTime(880, now + 0.15);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            } else if (type === 'error') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(220, now);
+                osc.frequency.setValueAtTime(150, now + 0.1);
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            } else if (type === 'flip') {
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.exponentialRampToValueAtTime(600, now + 0.08);
+                gain.gain.setValueAtTime(0.1, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+                osc.start(now);
+                osc.stop(now + 0.08);
+            }
+        }
+
+        const DB_KEY = 'quizit_master_db_v2';
+        const SETTINGS_KEY = 'quizit_settings_v2';
+
+        function getDB() {
+            let data = localStorage.getItem(DB_KEY);
+            if (!data) {
+                const initial = {
+                    sets: [
+                        {
+                            id: 'set_sample_1',
+                            title: 'Web Development Basics',
+                            description: 'Core concepts of HTML, CSS, and JavaScript for beginners.',
+                            folderId: 'folder_dev',
+                            createdAt: Date.now(),
+                            terms: [
+                                { id: 't1', term: 'HTML', definition: 'HyperText Markup Language; structures web pages.', image: '', starred: true },
+                                { id: 't2', term: 'CSS', definition: 'Cascading Style Sheets; styles the visual presentation.', image: '', starred: false },
+                                { id: 't3', term: 'JavaScript', definition: 'Programming language for adding interactive behavior.', image: '', starred: true }
+                            ]
+                        }
+                    ],
+                    folders: [
+                        { id: 'folder_dev', title: 'Programming & Tech' }
+                    ]
+                };
+                localStorage.setItem(DB_KEY, JSON.stringify(initial));
+                return initial;
+            }
+            return JSON.parse(data);
+        }
+
+        function saveDB(db) {
+            localStorage.setItem(DB_KEY, JSON.stringify(db));
+        }
+
+        function getSettings() {
+            let s = localStorage.getItem(SETTINGS_KEY);
+            if (!s) {
+                const def = { darkMode: false, streak: 1, lastLogin: new Date().toDateString() };
+                localStorage.setItem(SETTINGS_KEY, JSON.stringify(def));
+                return def;
+            }
+            return JSON.parse(s);
+        }
+
+        function saveSettings(settings) {
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+        }
+
+        function showModal(title, msg, onOk = null, customHtml = '') {
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-msg').innerText = msg;
+            document.getElementById('modal-custom-content').innerHTML = customHtml;
+            const okBtn = document.getElementById('modal-ok-btn');
+            const cancelBtn = document.getElementById('modal-cancel-btn');
+            
+            if (onOk) {
+                cancelBtn.classList.remove('hidden');
+                okBtn.onclick = () => { closeModal(); onOk(); };
+            } else {
+                cancelBtn.classList.add('hidden');
+                okBtn.onclick = closeModal;
+            }
+            document.getElementById('custom-modal').classList.remove('hidden');
+            document.getElementById('custom-modal').classList.add('flex');
+        }
+
+        function closeModal() {
+            document.getElementById('custom-modal').classList.add('hidden');
+            document.getElementById('custom-modal').classList.remove('flex');
+        }
+
+        function toggleDarkMode() {
+            const settings = getSettings();
+            settings.darkMode = !settings.darkMode;
+            saveSettings(settings);
+            applyTheme(settings.darkMode);
+        }
+
+        function applyTheme(isDark) {
+            if (isDark) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const settings = getSettings();
+            applyTheme(settings.darkMode);
+            
+            const today = new Date().toDateString();
+            if (settings.lastLogin !== today) {
+                const lastDate = new Date(settings.lastLogin);
+                const diffTime = Math.abs(new Date(today) - lastDate);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                if (diffDays === 1) {
+                    settings.streak += 1;
+                } else if (diffDays > 1) {
+                    settings.streak = 1;
+                }
+                settings.lastLogin = today;
+                saveSettings(settings);
+            }
+            document.getElementById('streak-count').innerText = settings.streak;
+
+            window.router.navigate('dashboard');
+        });
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('-translate-x-full');
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+        }
+
+        /* --- STREAMING_CHUNK:Configuring SPA router and view handlers... --- */
+        const router = {
+            currentView: 'dashboard',
+            params: {},
+            navigate(view, params = {}) {
+                this.currentView = view;
+                this.params = params;
+                window.scrollTo(0,0);
+                
+                document.querySelectorAll('.nav-btn').forEach(btn => {
+                    if (btn.getAttribute('data-view') === view) {
+                        btn.classList.add('bg-blue-50', 'dark:bg-slate-800', 'text-qBlue');
+                    } else {
+                        btn.classList.remove('bg-blue-50', 'dark:bg-slate-800', 'text-qBlue');
+                    }
+                });
+
+                const app = document.getElementById('app');
+                switch(view) {
+                    case 'dashboard': app.innerHTML = renderDashboard(); break;
+                    case 'library': app.innerHTML = renderLibrary(); break;
+                    case 'folders': app.innerHTML = renderFolders(); break;
+                    case 'creator': app.innerHTML = renderCreator(params.setId); initCreatorForm(params.setId); break;
+                    case 'study': app.innerHTML = renderStudyHub(params.setId); break;
+                    case 'flashcards': app.innerHTML = renderFlashcards(params.setId); initFlashcardsEngine(params.setId); break;
+                    case 'learn': app.innerHTML = renderLearn(params.setId); initLearnEngine(params.setId); break;
+                    case 'test': app.innerHTML = renderTest(params.setId); initTestEngine(params.setId); break;
+                    case 'match': app.innerHTML = renderMatch(params.setId); initMatchEngine(params.setId); break;
+                    case 'blast': app.innerHTML = renderBlast(params.setId); initBlastEngine(params.setId); break;
+                    default: app.innerHTML = renderDashboard();
+                }
+            }
+        };
+        window.router = router;
+
+        function renderDashboard() {
+            const db = getDB();
+            const recentSets = [...db.sets].sort((a,b) => b.createdAt - a.createdAt).slice(0, 6);
+            return `
+                <div class="space-y-8 pb-16">
+                    <div class="bg-gradient-to-r from-qBlue to-indigo-600 rounded-3xl p-8 text-white shadow-xl flex flex-col md:flex-row justify-between items-center gap-6">
+                        <div class="space-y-2">
+                            <span class="bg-white/20 text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wider">Welcome back</span>
+                            <h1 class="text-3xl font-black">Ready to level up your study game?</h1>
+                            <p class="text-white/80 text-sm">Choose a study set or create a new one instantly.</p>
+                        </div>
+                        <button onclick="window.router.navigate('creator')" class="bg-white text-qBlue font-extrabold px-6 py-3 rounded-2xl shadow-lg hover:bg-slate-100 transition shrink-0">+ Create Study Set</button>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="flex justify-between items-center">
+                            <h2 class="text-xl font-black">Recent Study Sets</h2>
+                            <button onclick="window.router.navigate('library')" class="text-xs font-bold text-qBlue hover:underline">View All &rarr;</button>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            ${recentSets.length === 0 ? `<p class="text-sm text-slate-400">No study sets found.</p>` : recentSets.map(set => `
+                                <div onclick="window.router.navigate('study', {setId: '${set.id}'})" class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-2xl p-6 hover:shadow-lg transition cursor-pointer flex flex-col justify-between group">
+                                    <div>
+                                        <div class="flex justify-between items-start mb-3">
+                                            <span class="text-xs font-bold uppercase tracking-wider bg-blue-50 dark:bg-blue-950/40 text-qBlue px-2.5 py-1 rounded-md">${set.terms.length} terms</span>
+                                            <span class="text-xs text-slate-400">📁 ${getFolderName(set.folderId)}</span>
+                                        </div>
+                                        <h3 class="text-lg font-bold group-hover:text-qBlue transition mb-1 line-clamp-1">${escapeHtml(set.title)}</h3>
+                                        <p class="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mb-4">${escapeHtml(set.description || 'No description.')}</p>
+                                    </div>
+                                    <div class="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800 text-xs font-semibold text-qBlue">
+                                        <span>Study Now</span>
+                                        <span>&rarr;</span>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function getFolderName(id) {
+            const db = getDB();
+            const f = db.folders.find(x => x.id === id);
+            return f ? f.title : 'Unsorted';
+        }
+
+        function renderLibrary() {
+            const db = getDB();
+            return `
+                <div class="space-y-6 pb-16">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-[#181632] p-6 rounded-3xl border border-qBorderLight dark:border-qBorderDark shadow-sm">
+                        <div>
+                            <h1 class="text-2xl font-black">Your Library</h1>
+                            <p class="text-sm text-slate-500">All your flashcard sets in one place.</p>
+                        </div>
+                        <div class="flex gap-2 w-full sm:w-auto">
+                            <input type="text" oninput="filterLibrarySets(this.value)" placeholder="Filter sets..." class="bg-slate-50 dark:bg-slate-800 border border-qBorderLight dark:border-qBorderDark px-4 py-2 rounded-xl text-sm outline-none w-full sm:w-64">
+                        </div>
+                    </div>
+
+                    <div id="library-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        ${db.sets.map(set => libraryCardHtml(set)).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function libraryCardHtml(set) {
+            return `
+                <div class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-2xl p-6 hover:shadow-lg transition flex flex-col justify-between group">
+                    <div>
+                        <div class="flex justify-between items-start mb-3">
+                            <span class="text-xs font-bold uppercase tracking-wider bg-blue-50 dark:bg-blue-950/40 text-qBlue px-2.5 py-1 rounded-md">${set.terms.length} terms</span>
+                            <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                                <button onclick="window.router.navigate('creator', {setId: '${set.id}'})" class="p-1 hover:text-qBlue">✏️</button>
+                                <button onclick="shareSetCode('${set.id}')" class="p-1 hover:text-qBlue" title="Share Code">🔗</button>
+                                <button onclick="deleteSet('${set.id}')" class="p-1 hover:text-red-500">🗑️</button>
+                            </div>
+                        </div>
+                        <h3 onclick="window.router.navigate('study', {setId: '${set.id}'})" class="text-lg font-bold group-hover:text-qBlue cursor-pointer transition mb-1 line-clamp-1">${escapeHtml(set.title)}</h3>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mb-4">${escapeHtml(set.description || 'No description.')}</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="window.router.navigate('study', {setId: '${set.id}'})" class="flex-1 bg-slate-100 dark:bg-slate-800 hover:bg-qBlue hover:text-white font-semibold py-2 rounded-xl text-xs transition text-center">Study</button>
+                        <button onclick="exportSetJson('${set.id}')" class="px-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 font-semibold py-2 rounded-xl text-xs transition">💾</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function filterLibrarySets(query) {
+            const db = getDB();
+            const filtered = db.sets.filter(s => s.title.toLowerCase().includes(query.toLowerCase()) || (s.description && s.description.toLowerCase().includes(query.toLowerCase())));
+            const grid = document.getElementById('library-grid');
+            grid.innerHTML = filtered.length === 0 ? `<p class="text-sm text-slate-400 col-span-full">No matching sets.</p>` : filtered.map(s => libraryCardHtml(s)).join('');
+        }
+
+        function deleteSet(id) {
+            const db = getDB();
+            db.sets = db.sets.filter(s => s.id !== id);
+            saveDB(db);
+            window.router.navigate('library');
+        }
+
+        function renderFolders() {
+            const db = getDB();
+            return `
+                <div class="space-y-6 pb-16">
+                    <div class="flex justify-between items-center bg-white dark:bg-[#181632] p-6 rounded-3xl border border-qBorderLight dark:border-qBorderDark shadow-sm">
+                        <div>
+                            <h1 class="text-2xl font-black">Folders</h1>
+                            <p class="text-sm text-slate-500">Organize your study sets into groups.</p>
+                        </div>
+                        <button onclick="promptCreateFolder()" class="bg-qBlue hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl text-sm transition">+ New Folder</button>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        ${db.folders.map(folder => {
+                            const folderSets = db.sets.filter(s => s.folderId === folder.id);
+                            return `
+                                <div class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-3xl p-6 space-y-4 shadow-sm">
+                                    <div class="flex justify-between items-center">
+                                        <h3 class="text-lg font-bold">📁 ${escapeHtml(folder.title)}</h3>
+                                        <button onclick="deleteFolder('${folder.id}')" class="text-xs text-red-500 hover:underline">Delete</button>
+                                    </div>
+                                    <div class="space-y-2">
+                                        ${folderSets.length === 0 ? `<p class="text-xs text-slate-400">No sets in this folder.</p>` : folderSets.map(s => `
+                                            <div onclick="window.router.navigate('study', {setId: '${s.id}'})" class="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-800 rounded-xl cursor-pointer hover:bg-slate-100 transition text-xs font-semibold">
+                                                <span>${escapeHtml(s.title)}</span>
+                                                <span class="text-slate-400">${s.terms.length} terms</span>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function promptCreateFolder() {
+            const html = `<input type="text" id="new-folder-input" placeholder="Folder Name..." class="w-full bg-slate-100 dark:bg-slate-800 border border-qBorderLight dark:border-qBorderDark p-3 rounded-xl text-sm outline-none">`;
+            showModal("Create Folder", "Enter a title for your new folder.", () => {
+                const val = document.getElementById('new-folder-input').value.trim();
+                if (!val) return;
+                const db = getDB();
+                db.folders.push({ id: 'folder_' + Date.now(), title: val });
+                saveDB(db);
+                window.router.navigate('folders');
+            }, html);
+        }
+
+        function deleteFolder(id) {
+            const db = getDB();
+            db.folders = db.folders.filter(f => f.id !== id);
+            db.sets.forEach(s => { if (s.folderId === id) s.folderId = ''; });
+            saveDB(db);
+            window.router.navigate('folders');
+        }
+
+        /* --- STREAMING_CHUNK:Implementing set creator and editor engine... --- */
+        let currentEditingSetId = null;
+        let editorTerms = [];
+
+        function renderCreator(setId) {
+            currentEditingSetId = setId || null;
+            const db = getDB();
+            return `
+                <div class="max-w-4xl mx-auto space-y-6 pb-24">
+                    <div class="flex justify-between items-center bg-white dark:bg-[#181632] p-6 rounded-3xl border border-qBorderLight dark:border-qBorderDark shadow-sm">
+                        <h1 class="text-2xl font-black">${setId ? 'Edit Study Set' : 'Create a New Set'}</h1>
+                        <button onclick="saveStudySet()" class="bg-qGreen hover:bg-green-600 text-white font-bold px-6 py-2.5 rounded-xl text-sm shadow-sm transition">Save Set</button>
+                    </div>
+
+                    <div class="bg-white dark:bg-[#181632] p-6 rounded-3xl border border-qBorderLight dark:border-qBorderDark space-y-4 shadow-sm">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="md:col-span-2">
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Title</label>
+                                <input type="text" id="set-title" placeholder="e.g., Organic Chemistry Chapter 1" class="w-full bg-slate-50 dark:bg-slate-800 border border-qBorderLight dark:border-qBorderDark rounded-xl p-3 text-sm font-bold outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Folder</label>
+                                <select id="set-folder" class="w-full bg-slate-50 dark:bg-slate-800 border border-qBorderLight dark:border-qBorderDark rounded-xl p-3 text-sm font-semibold outline-none">
+                                    <option value="">Unsorted</option>
+                                    ${db.folders.map(f => `<option value="${f.id}">${escapeHtml(f.title)}</option>`).join('')}
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Description</label>
+                            <textarea id="set-desc" rows="2" placeholder="Add a description..." class="w-full bg-slate-50 dark:bg-slate-800 border border-qBorderLight dark:border-qBorderDark rounded-xl p-3 text-sm outline-none"></textarea>
+                        </div>
+                    </div>
+
+                    <div id="editor-cards-container" class="space-y-4"></div>
+
+                    <div class="flex justify-center pt-2">
+                        <button onclick="addEditorCard()" class="bg-white dark:bg-[#181632] hover:bg-slate-50 dark:hover:bg-slate-800 border-2 border-dashed border-qBlue text-qBlue font-bold px-8 py-3 rounded-2xl text-sm transition w-full max-w-md">+ Add Card</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function initCreatorForm(setId) {
+            editorTerms = [];
+            if (setId) {
+                const db = getDB();
+                const set = db.sets.find(s => s.id === setId);
+                if (set) {
+                    document.getElementById('set-title').value = set.title;
+                    document.getElementById('set-desc').value = set.description || '';
+                    document.getElementById('set-folder').value = set.folderId || '';
+                    editorTerms = set.terms.map(t => ({ ...t }));
+                }
+            } else {
+                editorTerms = [
+                    { id: 't_1', term: '', definition: '', image: '', starred: false },
+                    { id: 't_2', term: '', definition: '', image: '', starred: false },
+                    { id: 't_3', term: '', definition: '', image: '', starred: false }
+                ];
+            }
+            renderEditorCards();
+        }
+
+        function renderEditorCards() {
+            const container = document.getElementById('editor-cards-container');
+            container.innerHTML = editorTerms.map((item, idx) => `
+                <div class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-3xl p-6 shadow-sm space-y-4 relative group">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-bold text-slate-400 font-mono">Card #${idx + 1}</span>
+                        <button onclick="removeEditorCard('${item.id}')" class="text-slate-400 hover:text-red-500 text-sm">🗑️</button>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="space-y-1 relative">
+                            <label class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Term</label>
+                            <textarea rows="2" oninput="updateEditorTerm('${item.id}', 'term', this.value); handleSuggestions(this, 'term', '${item.id}')" placeholder="Enter term" class="w-full bg-slate-50 dark:bg-slate-800 border border-qBorderLight dark:border-qBorderDark rounded-xl p-3 text-sm outline-none resize-none">${escapeHtml(item.term)}</textarea>
+                        </div>
+                        <div class="space-y-1 relative">
+                            <label class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Definition</label>
+                            <textarea rows="2" oninput="updateEditorTerm('${item.id}', 'definition', this.value); handleSuggestions(this, 'def', '${item.id}')" placeholder="Enter definition" class="w-full bg-slate-50 dark:bg-slate-800 border border-qBorderLight dark:border-qBorderDark rounded-xl p-3 text-sm outline-none resize-none">${escapeHtml(item.definition)}</textarea>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+                        <input type="text" value="${escapeHtml(item.image || '')}" oninput="updateEditorTerm('${item.id}', 'image', this.value)" placeholder="Image URL (optional)" class="flex-1 bg-slate-50 dark:bg-slate-800 border border-qBorderLight dark:border-qBorderDark rounded-xl px-3 py-2 text-xs outline-none">
+                        <label class="cursor-pointer bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 px-3 py-2 rounded-xl text-xs font-semibold transition">
+                            📷 Upload Image
+                            <input type="file" accept="image/*" onchange="handleImageUpload(event, '${item.id}')" class="hidden">
+                        </label>
+                    </div>
+                    ${item.image ? `<div class="mt-2"><img src="${item.image}" class="h-20 rounded-xl object-cover border border-qBorderLight dark:border-qBorderDark"></div>` : ''}
+                </div>
+            `).join('');
+        }
+
+        function handleSuggestions(el, type, id) {
+            // Suggestion logic placeholder or lightweight mock suggestions
+        }
+
+        function addEditorCard() {
+            editorTerms.push({ id: 't_' + Math.random(), term: '', definition: '', image: '', starred: false });
+            renderEditorCards();
+        }
+
+        function removeEditorCard(id) {
+            if (editorTerms.length <= 1) {
+                showModal('Notice', 'A set must contain at least one card.');
+                return;
+            }
+            editorTerms = editorTerms.filter(t => t.id !== id);
+            renderEditorCards();
+        }
+
+        function updateEditorTerm(id, field, val) {
+            const item = editorTerms.find(t => t.id === id);
+            if (item) item[field] = val;
+        }
+
+        function handleImageUpload(e, id) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                updateEditorTerm(id, 'image', evt.target.result);
+                renderEditorCards();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function saveStudySet() {
+            const title = document.getElementById('set-title').value.trim();
+            const description = document.getElementById('set-desc').value.trim();
+            const folderId = document.getElementById('set-folder').value;
+
+            if (!title) {
+                showModal('Error', 'Please enter a title for the study set.');
+                return;
+            }
+
+            const validTerms = editorTerms.filter(t => t.term.trim() !== '' || t.definition.trim() !== '');
+            if (validTerms.length === 0) {
+                showModal('Error', 'Please add at least one valid term and definition.');
+                return;
+            }
+
+            const db = getDB();
+            const setId = currentEditingSetId || 'set_' + Date.now();
+            const existingIndex = db.sets.findIndex(s => s.id === setId);
+
+            const setObj = {
+                id: setId,
+                title,
+                description,
+                folderId,
+                createdAt: existingIndex >= 0 ? db.sets[existingIndex].createdAt : Date.now(),
+                terms: validTerms.map(t => ({
+                    id: t.id || 't_' + Math.random(),
+                    term: t.term.trim(),
+                    definition: t.definition.trim(),
+                    image: t.image || '',
+                    starred: t.starred || false
+                }))
+            };
+
+            if (existingIndex >= 0) {
+                db.sets[existingIndex] = setObj;
+            } else {
+                db.sets.push(setObj);
+            }
+
+            saveDB(db);
+            window.router.navigate('study', { setId });
+        }
+
+        /* --- STREAMING_CHUNK:Implementing study hub and game modes... --- */
+        function renderStudyHub(setId) {
+            const db = getDB();
+            const set = db.sets.find(s => s.id === setId);
+            if (!set) return `<div class="p-8 text-center text-slate-400">Set not found.</div>`;
+
+            return `
+                <div class="max-w-5xl mx-auto space-y-8 pb-16">
+                    <div class="bg-white dark:bg-[#181632] p-8 rounded-3xl border border-qBorderLight dark:border-qBorderDark shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                        <div class="space-y-2">
+                            <button onclick="window.router.navigate('library')" class="text-xs font-bold text-qBlue uppercase tracking-wider hover:underline">&larr; Back to Library</button>
+                            <h1 class="text-3xl font-black">${escapeHtml(set.title)}</h1>
+                            <p class="text-sm text-slate-500">${escapeHtml(set.description || 'No description.')}</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="window.router.navigate('creator', {setId: '${set.id}'})" class="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 font-semibold rounded-xl text-xs transition">Edit Set</button>
+                            <button onclick="shareSetCode('${set.id}')" class="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 font-semibold rounded-xl text-xs transition">🔗 Share</button>
+                            <button onclick="printStudyGuide('${set.id}')" class="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 font-semibold rounded-xl text-xs transition">🖨️ Print</button>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                        <div onclick="window.router.navigate('flashcards', {setId: '${set.id}'})" class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-3xl p-6 cursor-pointer hover:shadow-lg transition group">
+                            <div class="text-2xl mb-3">🎴</div>
+                            <h3 class="font-bold text-base mb-1 group-hover:text-qBlue">Flashcards</h3>
+                            <p class="text-xs text-slate-400">Flip cards, audio, shortcuts.</p>
+                        </div>
+                        <div onclick="window.router.navigate('learn', {setId: '${set.id}'})" class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-3xl p-6 cursor-pointer hover:shadow-lg transition group">
+                            <div class="text-2xl mb-3">🧠</div>
+                            <h3 class="font-bold text-base mb-1 group-hover:text-qBlue">Learn</h3>
+                            <p class="text-xs text-slate-400">Adaptive intelligent practice.</p>
+                        </div>
+                        <div onclick="window.router.navigate('test', {setId: '${set.id}'})" class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-3xl p-6 cursor-pointer hover:shadow-lg transition group">
+                            <div class="text-2xl mb-3">📝</div>
+                            <h3 class="font-bold text-base mb-1 group-hover:text-qBlue">Test</h3>
+                            <p class="text-xs text-slate-400">Exam with instant grading.</p>
+                        </div>
+                        <div onclick="window.router.navigate('match', {setId: '${set.id}'})" class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-3xl p-6 cursor-pointer hover:shadow-lg transition group">
+                            <div class="text-2xl mb-3">⚡</div>
+                            <h3 class="font-bold text-base mb-1 group-hover:text-qBlue">Match</h3>
+                            <p class="text-xs text-slate-400">Fast-paced arcade matching.</p>
+                        </div>
+                        <div onclick="window.router.navigate('blast', {setId: '${set.id}'})" class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-3xl p-6 cursor-pointer hover:shadow-lg transition group">
+                            <div class="text-2xl mb-3">🚀</div>
+                            <h3 class="font-bold text-base mb-1 group-hover:text-qBlue">Blast</h3>
+                            <p class="text-xs text-slate-400">Asteroid shooter game.</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-3xl p-8 space-y-4 shadow-sm">
+                        <h2 class="text-lg font-black">Terms in this set (${set.terms.length})</h2>
+                        <div class="space-y-3">
+                            ${set.terms.map(t => `
+                                <div class="p-4 bg-slate-50 dark:bg-slate-800/50 border border-qBorderLight dark:border-qBorderDark rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
+                                        <div class="font-bold text-sm">${escapeHtml(t.term)}</div>
+                                        <div class="text-sm text-slate-600 dark:text-slate-300">${escapeHtml(t.definition)}</div>
+                                    </div>
+                                    ${t.image ? `<img src="${t.image}" class="h-12 w-16 object-cover rounded-xl border border-qBorderLight dark:border-qBorderDark">` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        /* --- STREAMING_CHUNK:Implementing Flashcards and learning engines... --- */
+        let fcState = { set: null, cards: [], index: 0, flipped: false };
+
+        function renderFlashcards(setId) {
+            return `
+                <div class="max-w-3xl mx-auto space-y-6 pb-16 flex flex-col items-center">
+                    <div class="w-full flex justify-between items-center bg-white dark:bg-[#181632] px-6 py-4 rounded-2xl border border-qBorderLight dark:border-qBorderDark shadow-sm">
+                        <button onclick="window.router.navigate('study', {setId: '${setId}'})" class="text-xs font-bold text-qBlue uppercase tracking-wider hover:underline">&larr; Back</button>
+                        <span id="fc-counter" class="text-sm font-bold font-mono">1 / 1</span>
+                    </div>
+
+                    <div class="w-full h-96 perspective-1000 cursor-pointer" onclick="flipFlashcard()">
+                        <div id="fc-inner" class="relative w-full h-full duration-300 transform-style-3d shadow-xl rounded-3xl border border-qBorderLight dark:border-qBorderDark bg-white dark:bg-[#181632]">
+                            <div class="absolute inset-0 backface-hidden flex flex-col items-center justify-center p-8 text-center">
+                                <span class="absolute top-6 left-6 text-xs font-bold text-slate-400 uppercase">Term</span>
+                                <h2 id="fc-front" class="text-2xl sm:text-3xl font-black mb-4"></h2>
+                                <div id="fc-front-img" class="max-h-36"></div>
+                                <span class="absolute bottom-6 text-xs text-slate-400">Click or press Space to flip</span>
+                            </div>
+                            <div class="absolute inset-0 backface-hidden rotate-y-180 flex flex-col items-center justify-center p-8 text-center">
+                                <span class="absolute top-6 left-6 text-xs font-bold text-qBlue uppercase">Definition</span>
+                                <h2 id="fc-back" class="text-xl sm:text-2xl font-semibold mb-4"></h2>
+                                <div id="fc-back-img" class="max-h-36"></div>
+                                <span class="absolute bottom-6 text-xs text-slate-400">Click or press Space to flip</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between w-full px-4">
+                        <button onclick="prevFlashcard()" class="px-6 py-3 bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark font-bold rounded-2xl shadow-sm hover:bg-slate-50">&larr; Prev</button>
+                        <button onclick="speakCurrentCard()" class="px-4 py-3 bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark font-bold rounded-2xl shadow-sm hover:bg-slate-50">🔊 Read</button>
+                        <button onclick="nextFlashcard()" class="px-6 py-3 bg-qBlue text-white font-bold rounded-2xl shadow-sm hover:bg-blue-700">Next &rarr;</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function initFlashcardsEngine(setId) {
+            const db = getDB();
+            const set = db.sets.find(s => s.id === setId);
+            if (!set) return;
+            fcState.set = set;
+            fcState.cards = [...set.terms];
+            fcState.index = 0;
+            fcState.flipped = false;
+            updateFlashcardUI();
+
+            window.onkeydown = function(e) {
+                if (window.router.currentView !== 'flashcards') return;
+                if (e.code === 'Space') { e.preventDefault(); flipFlashcard(); }
+                else if (e.code === 'ArrowRight') { nextFlashcard(); }
+                else if (e.code === 'ArrowLeft') { prevFlashcard(); }
+            };
+        }
+
+        function updateFlashcardUI() {
+            if (fcState.cards.length === 0) return;
+            const c = fcState.cards[fcState.index];
+            document.getElementById('fc-front').innerText = c.term;
+            document.getElementById('fc-back').innerText = c.definition;
+            document.getElementById('fc-counter').innerText = `${fcState.index + 1} / ${fcState.cards.length}`;
+            
+            document.getElementById('fc-front-img').innerHTML = c.image ? `<img src="${c.image}" class="h-28 rounded-xl object-cover border border-qBorderLight dark:border-qBorderDark">` : '';
+            document.getElementById('fc-back-img').innerHTML = c.image ? `<img src="${c.image}" class="h-28 rounded-xl object-cover border border-qBorderLight dark:border-qBorderDark">` : '';
+
+            const inner = document.getElementById('fc-inner');
+            inner.style.transform = fcState.flipped ? 'rotateY(180deg)' : 'rotateY(0deg)';
+        }
+
+        function flipFlashcard() {
+            fcState.flipped = !fcState.flipped;
+            playSound('flip');
+            updateFlashcardUI();
+        }
+
+        function nextFlashcard() {
+            fcState.flipped = false;
+            fcState.index = (fcState.index + 1) % fcState.cards.length;
+            updateFlashcardUI();
+        }
+
+        function prevFlashcard() {
+            fcState.flipped = false;
+            fcState.index = (fcState.index - 1 + fcState.cards.length) % fcState.cards.length;
+            updateFlashcardUI();
+        }
+
+        function speakCurrentCard() {
+            const c = fcState.cards[fcState.index];
+            const text = fcState.flipped ? c.definition : c.term;
+            const utterance = new SpeechSynthesisUtterance(text);
+            window.speechSynthesis.speak(utterance);
+        }
+
+        let learnState = { set: null, queue: [] };
+
+        function renderLearn(setId) {
+            return `
+                <div class="max-w-2xl mx-auto space-y-6 pb-16">
+                    <div class="flex justify-between items-center bg-white dark:bg-[#181632] px-6 py-4 rounded-2xl border border-qBorderLight dark:border-qBorderDark shadow-sm">
+                        <button onclick="window.router.navigate('study', {setId: '${setId}'})" class="text-xs font-bold text-qBlue uppercase tracking-wider hover:underline">&larr; Back</button>
+                        <span id="learn-progress" class="text-sm font-bold font-mono">Progress: 0%</span>
+                    </div>
+                    <div id="learn-container" class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-3xl p-8 shadow-sm space-y-6"></div>
+                </div>
+            `;
+        }
+
+        function initLearnEngine(setId) {
+            const db = getDB();
+            const set = db.sets.find(s => s.id === setId);
+            if (!set || set.terms.length === 0) return;
+            learnState.set = set;
+            learnState.queue = [...set.terms].sort(() => Math.random() - 0.5);
+            nextLearnQ();
+        }
+
+        function nextLearnQ() {
+            if (learnState.queue.length === 0) {
+                document.getElementById('learn-container').innerHTML = `
+                    <div class="text-center py-12 space-y-4">
+                        <div class="text-5xl">🏆</div>
+                        <h2 class="text-2xl font-black">Learn Session Complete!</h2>
+                        <button onclick="window.router.navigate('study', {setId: '${learnState.set.id}'})" class="bg-qBlue text-white font-bold px-6 py-3 rounded-2xl text-sm">Return to Set</button>
+                    </div>
+                `;
+                document.getElementById('learn-progress').innerText = `Progress: 100%`;
+                return;
+            }
+
+            const current = learnState.queue[0];
+            const total = learnState.set.terms.length;
+            const pct = Math.round(((total - learnState.queue.length) / total) * 100);
+            document.getElementById('learn-progress').innerText = `Progress: ${pct}%`;
+
+            const distractors = learnState.set.terms.filter(t => t.id !== current.id).sort(() => Math.random() - 0.5).slice(0, 3);
+            const options = [current, ...distractors].sort(() => Math.random() - 0.5);
+
+            document.getElementById('learn-container').innerHTML = `
+                <div>
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Choose the correct definition</span>
+                    <h3 class="text-xl font-black mt-2 mb-6">${escapeHtml(current.term)}</h3>
+                    <div class="space-y-3">
+                        ${options.map(opt => `
+                            <button onclick="checkLearnAns('${opt.id}', '${current.id}')" class="w-full text-left p-4 rounded-2xl border border-qBorderLight dark:border-qBorderDark hover:border-qBlue hover:bg-blue-50 dark:hover:bg-slate-800 text-sm font-semibold transition">
+                                ${escapeHtml(opt.definition)}
+                            </button>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function checkLearnAns(selectedId, correctId) {
+            const container = document.getElementById('learn-container');
+            if (selectedId === correctId) {
+                playSound('success');
+                container.innerHTML += `
+                    <div class="mt-4 p-4 bg-green-50 dark:bg-green-950/40 text-qGreen rounded-2xl font-bold text-sm flex justify-between items-center">
+                        <span>Correct!</span>
+                        <button onclick="learnState.queue.shift(); nextLearnQ();" class="bg-qGreen text-white px-4 py-2 rounded-xl text-xs">Continue &rarr;</button>
+                    </div>
+                `;
+            } else {
+                playSound('error');
+                container.innerHTML += `
+                    <div class="mt-4 p-4 bg-red-50 dark:bg-red-950/40 text-qRed rounded-2xl font-bold text-sm flex justify-between items-center">
+                        <span>Incorrect. Review this card.</span>
+                        <button onclick="learnState.queue.push(learnState.queue.shift()); nextLearnQ();" class="bg-red-500 text-white px-4 py-2 rounded-xl text-xs">Continue &rarr;</button>
+                    </div>
+                `;
+            }
+        }
+
+        /* --- STREAMING_CHUNK:Implementing Test and arcade matching games... --- */
+        let testState = { set: null, questions: [] };
+
+        function renderTest(setId) {
+            return `
+                <div class="max-w-3xl mx-auto space-y-6 pb-16">
+                    <div class="flex justify-between items-center bg-white dark:bg-[#181632] px-6 py-4 rounded-2xl border border-qBorderLight dark:border-qBorderDark shadow-sm">
+                        <button onclick="window.router.navigate('study', {setId: '${setId}'})" class="text-xs font-bold text-qBlue uppercase tracking-wider hover:underline">&larr; Back</button>
+                        <h2 class="text-sm font-bold">Exam Simulator</h2>
+                    </div>
+                    <div id="test-questions" class="space-y-6"></div>
+                    <div id="test-submit-wrapper" class="flex justify-end pt-4">
+                        <button onclick="submitTest()" class="bg-qGreen text-white font-bold px-8 py-3 rounded-2xl text-sm shadow-sm hover:bg-green-600 transition">Submit Test</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function initTestEngine(setId) {
+            const db = getDB();
+            const set = db.sets.find(s => s.id === setId);
+            if (!set || set.terms.length === 0) return;
+            testState.set = set;
+
+            testState.questions = set.terms.map((t, idx) => {
+                let distractors = set.terms.filter(x => x.id !== t.id).sort(() => Math.random() - 0.5).slice(0, 3);
+                let options = [t, ...distractors].sort(() => Math.random() - 0.5).map(o => o.definition);
+                return {
+                    id: 'q_' + idx,
+                    prompt: t.term,
+                    correct: t.definition,
+                    options: options
+                };
+            });
+
+            document.getElementById('test-questions').innerHTML = testState.questions.map((q, idx) => `
+                <div class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-3xl p-6 sm:p-8 space-y-4" id="test-card-${idx}">
+                    <span class="text-xs font-bold text-slate-400 font-mono">Question ${idx + 1}</span>
+                    <h3 class="text-lg font-bold">${escapeHtml(q.prompt)}</h3>
+                    <div class="space-y-2">
+                        ${q.options.map(opt => `
+                            <label class="flex items-center gap-3 p-3.5 rounded-xl border border-qBorderLight dark:border-qBorderDark hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer text-sm">
+                                <input type="radio" name="${q.id}" value="${escapeHtml(opt)}">
+                                <span>${escapeHtml(opt)}</span>
+                            </label>
+                        `).join('')}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function submitTest() {
+            let score = 0;
+            testState.questions.forEach((q, idx) => {
+                const selected = document.querySelector(`input[name="${q.id}"]:checked`);
+                const card = document.getElementById(`test-card-${idx}`);
+                if (selected && selected.value === q.correct) {
+                    score++;
+                    card.classList.add('border-green-400', 'bg-green-50/20');
+                } else {
+                    card.classList.add('border-red-400', 'bg-red-50/20');
+                }
+            });
+            playSound('success');
+            document.getElementById('test-submit-wrapper').innerHTML = `
+                <div class="w-full bg-white dark:bg-[#181632] p-6 rounded-2xl border border-qBorderLight dark:border-qBorderDark flex justify-between items-center">
+                    <span class="font-black text-lg">Score: ${score} / ${testState.questions.length}</span>
+                    <button onclick="window.router.navigate('study', {setId: '${testState.set.id}'})" class="bg-qBlue text-white font-bold px-6 py-2 rounded-xl text-sm">Finish</button>
+                </div>
+            `;
+        }
+
+        let matchState = { set: null, items: [], selected: null, timer: 0, interval: null, playing: false };
+
+        function renderMatch(setId) {
+            return `
+                <div class="max-w-4xl mx-auto space-y-6 pb-16">
+                    <div class="flex justify-between items-center bg-white dark:bg-[#181632] px-6 py-4 rounded-2xl border border-qBorderLight dark:border-qBorderDark shadow-sm">
+                        <button onclick="window.router.navigate('study', {setId: '${setId}'})" class="text-xs font-bold text-qBlue uppercase tracking-wider hover:underline">&larr; Back</button>
+                        <span id="match-timer" class="text-lg font-black font-mono text-qBlue">0.0s</span>
+                    </div>
+                    <div id="match-board" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4"></div>
+                </div>
+            `;
+        }
+
+        function initMatchEngine(setId) {
+            const db = getDB();
+            const set = db.sets.find(s => s.id === setId);
+            if (!set || set.terms.length === 0) return;
+            matchState.set = set;
+
+            const subset = [...set.terms].sort(() => Math.random() - 0.5).slice(0, 6);
+            let deck = [];
+            subset.forEach(t => {
+                deck.push({ id: t.id, text: t.term, type: 'term', matched: false });
+                deck.push({ id: t.id, text: t.definition, type: 'def', matched: false });
+            });
+            deck.sort(() => Math.random() - 0.5);
+
+            matchState.items = deck;
+            matchState.selected = null;
+            matchState.timer = 0;
+            matchState.playing = true;
+
+            if (matchState.interval) clearInterval(matchState.interval);
+            matchState.interval = setInterval(() => {
+                if (!matchState.playing) return;
+                matchState.timer += 0.1;
+                document.getElementById('match-timer').innerText = matchState.timer.toFixed(1) + 's';
+            }, 100);
+
+            renderMatchBoard();
+        }
+
+        function renderMatchBoard() {
+            const board = document.getElementById('match-board');
+            if (matchState.items.every(i => i.matched)) {
+                matchState.playing = false;
+                clearInterval(matchState.interval);
+                playSound('success');
+                board.innerHTML = `
+                    <div class="col-span-full py-16 text-center bg-white dark:bg-[#181632] rounded-3xl border border-qBorderLight dark:border-qBorderDark space-y-4">
+                        <h2 class="text-2xl font-black">Finished in ${matchState.timer.toFixed(1)}s!</h2>
+                        <button onclick="initMatchEngine('${matchState.set.id}')" class="bg-qBlue text-white font-bold px-6 py-2.5 rounded-xl text-sm">Play Again</button>
+                    </div>
+                `;
+                return;
+            }
+
+            board.innerHTML = matchState.items.map((item, idx) => `
+                <div onclick="selectMatchItem(${idx})" class="h-32 bg-white dark:bg-[#181632] border-2 ${item.matched ? 'opacity-0 pointer-events-none' : matchState.selected === idx ? 'border-qBlue bg-blue-50 dark:bg-slate-800' : 'border-qBorderLight dark:border-qBorderDark'} rounded-2xl p-4 flex items-center justify-center text-center cursor-pointer transition text-xs font-bold">
+                    ${escapeHtml(item.text)}
+                </div>
+            `).join('');
+        }
+
+        function selectMatchItem(idx) {
+            const clicked = matchState.items[idx];
+            if (matchState.selected === null) {
+                matchState.selected = idx;
+                renderMatchBoard();
+            } else if (matchState.selected === idx) {
+                matchState.selected = null;
+                renderMatchBoard();
+            } else {
+                const first = matchState.items[matchState.selected];
+                if (first.id === clicked.id && first.type !== clicked.type) {
+                    first.matched = true;
+                    clicked.matched = true;
+                    playSound('success');
+                    matchState.selected = null;
+                    renderMatchBoard();
+                } else {
+                    playSound('error');
+                    matchState.selected = null;
+                    renderMatchBoard();
+                }
+            }
+        }
+
+        /* --- STREAMING_CHUNK:Implementing Blast arcade shooter and utility modal logic... --- */
+        let blastState = { set: null, activeAsteroids: [], score: 0, interval: null, canvas: null, ctx: null, running: false };
+
+        function renderBlast(setId) {
+            return `
+                <div class="max-w-4xl mx-auto space-y-4 pb-16 flex flex-col items-center">
+                    <div class="w-full flex justify-between items-center bg-white dark:bg-[#181632] px-6 py-4 rounded-2xl border border-qBorderLight dark:border-qBorderDark shadow-sm">
+                        <button onclick="window.router.navigate('study', {setId: '${setId}'})" class="text-xs font-bold text-qBlue uppercase tracking-wider hover:underline">&larr; Back</button>
+                        <span id="blast-score" class="text-sm font-black font-mono">Score: 0</span>
+                    </div>
+                    <div class="relative w-full bg-slate-900 rounded-3xl overflow-hidden border border-qBorderLight dark:border-qBorderDark shadow-2xl">
+                        <canvas id="blast-canvas" width="800" height="450" class="w-full block"></canvas>
+                        <div id="blast-input-bar" class="absolute bottom-4 left-4 right-4 flex gap-2">
+                            <input type="text" id="blast-typing-input" onkeydown="handleBlastInput(event)" placeholder="Type matching definition & press Enter..." class="w-full bg-black/60 backdrop-blur-md border border-slate-700 text-white px-4 py-3 rounded-2xl text-sm outline-none focus:border-qBlue">
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function initBlastEngine(setId) {
+            const db = getDB();
+            const set = db.sets.find(s => s.id === setId);
+            if (!set || set.terms.length === 0) return;
+            blastState.set = set;
+            blastState.score = 0;
+            blastState.activeAsteroids = [];
+            blastState.running = true;
+
+            const canvas = document.getElementById('blast-canvas');
+            blastState.canvas = canvas;
+            blastState.ctx = canvas.getContext('2d');
+
+            if (blastState.interval) clearInterval(blastState.interval);
+
+            blastState.interval = setInterval(() => {
+                if (!blastState.running) return;
+                if (blastState.activeAsteroids.length < 5) {
+                    const termObj = set.terms[Math.floor(Math.random() * set.terms.length)];
+                    blastState.activeAsteroids.push({
+                        id: termObj.id,
+                        term: termObj.term,
+                        definition: termObj.definition,
+                        x: Math.random() * 600 + 50,
+                        y: -30,
+                        speed: 0.5 + Math.random() * 0.8
+                    });
+                }
+            }, 3000);
+
+            requestAnimationFrame(blastLoop);
+            setTimeout(() => document.getElementById('blast-typing-input').focus(), 100);
+        }
+
+        function blastLoop() {
+            if (!blastState.running) return;
+            const ctx = blastState.ctx;
+            ctx.clearRect(0, 0, 800, 450);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(100, 100, 2, 2);
+            ctx.fillRect(400, 80, 2, 2);
+            ctx.fillRect(700, 300, 2, 2);
+
+            blastState.activeAsteroids.forEach(ast => {
+                ast.y += ast.speed;
+                ctx.fillStyle = '#282e3f';
+                ctx.beginPath();
+                ctx.arc(ast.x, ast.y, 35, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#3ccfcf';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '12px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(ast.term, ast.x, ast.y + 4);
+
+                if (ast.y > 430) {
+                    blastState.running = false;
+                    showModal('Game Over', `Asteroid hit surface! Final Score: ${blastState.score}`, () => window.router.navigate('study', { setId: blastState.set.id }));
+                }
+            });
+
+            requestAnimationFrame(blastLoop);
+        }
+
+        function handleBlastInput(e) {
+            if (e.key === 'Enter') {
+                const val = e.target.value.trim().toLowerCase();
+                const matchedIdx = blastState.activeAsteroids.findIndex(a => a.definition.toLowerCase() === val);
+                if (matchedIdx >= 0) {
+                    blastState.activeAsteroids.splice(matchedIdx, 1);
+                    blastState.score += 100;
+                    document.getElementById('blast-score').innerText = `Score: ${blastState.score}`;
+                    playSound('success');
+                    e.target.value = '';
+                } else {
+                    playSound('error');
+                }
+            }
+        }
+
+        function shareSetCode(setId) {
+            const db = getDB();
+            const set = db.sets.find(s => s.id === setId);
+            if (!set) return;
+            const code = btoa(encodeURIComponent(JSON.stringify(set)));
+            const html = `<textarea readonly class="w-full h-28 bg-slate-100 dark:bg-slate-800 p-3 rounded-xl text-xs font-mono select-all">${code}</textarea>`;
+            showModal('Share Code', 'Copy this share code to send to friends or import instantly.', null, html);
+        }
+
+        function openShareCodeModal() {
+            const html = `
+                <textarea id="import-code-input" placeholder="Paste share code here..." class="w-full h-28 bg-slate-100 dark:bg-slate-800 p-3 rounded-xl text-xs font-mono outline-none mb-2"></textarea>
+                <button onclick="importFromShareCode()" class="w-full bg-qBlue text-white font-bold py-2 rounded-xl text-sm">Import Set</button>
+            `;
+            showModal('Import Share Code', 'Paste a QuizIt share code below.', null, html);
+        }
+
+        function importFromShareCode() {
+            const code = document.getElementById('import-code-input').value.trim();
+            try {
+                const set = JSON.parse(decodeURIComponent(atob(code)));
+                if (!set.title || !Array.isArray(set.terms)) throw new Error();
+                const db = getDB();
+                if (!db.sets.some(s => s.id === set.id)) {
+                    db.sets.push(set);
+                    saveDB(db);
+                }
+                closeModal();
+                showModal('Success', 'Study set imported successfully!');
+                window.router.navigate('library');
+            } catch (err) {
+                showModal('Error', 'Invalid share code format.');
+            }
+        }
+
+        function exportSetJson(setId) {
+            const db = getDB();
+            const set = db.sets.find(s => s.id === setId);
+            if (!set) return;
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(set, null, 2));
+            const dl = document.createElement('a');
+            dl.setAttribute("href", dataStr);
+            dl.setAttribute("download", `${set.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_quizit.json`);
+            document.body.appendChild(dl);
+            dl.click();
+            dl.remove();
+        }
+
+        function exportAllData() {
+            const db = getDB();
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db, null, 2));
+            const dl = document.createElement('a');
+            dl.setAttribute("href", dataStr);
+            dl.setAttribute("download", "quizit_backup_" + Date.now() + ".json");
+            document.body.appendChild(dl);
+            dl.click();
+            dl.remove();
+        }
+
+        function openImportModal() {
+            const html = `
+                <div class="space-y-4">
+                    <input type="file" id="import-file-input" accept=".json" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-qBlue hover:file:bg-blue-100">
+                    <button onclick="processImportFile()" class="w-full bg-qBlue text-white font-bold py-2 rounded-xl text-sm">Upload & Import</button>
+                </div>
+            `;
+            showModal('Import JSON', 'Select a QuizIt backup or set JSON file.', null, html);
+        }
+
+        function processImportFile() {
+            const fileInput = document.getElementById('import-file-input');
+            if (!fileInput.files.length) return;
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    const db = getDB();
+                    if (parsed.sets && Array.isArray(parsed.sets)) {
+                        db.sets = [...db.sets, ...parsed.sets];
+                        if (parsed.folders) db.folders = [...db.folders, ...parsed.folders];
+                    } else if (parsed.title && Array.isArray(parsed.terms)) {
+                        db.sets.push(parsed);
+                    }
+                    saveDB(db);
+                    closeModal();
+                    showModal('Success', 'Data imported successfully!');
+                    window.router.navigate('library');
+                } catch (err) {
+                    showModal('Error', 'Invalid JSON structure.');
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function printStudyGuide(setId) {
+            window.print();
+        }
+    </script>
+</body>
+</html>
