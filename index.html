@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QuizIt - Study Smarter</title>
+    <title>QuizIt Pro - Study Smarter</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -85,15 +85,12 @@
                 </div>
             </div>
             <div class="flex items-center gap-3">
-                <div id="streak-badge" class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-orange-500/10 text-orange-500 rounded-xl text-xs font-bold">
-                    🔥 <span id="streak-count">0</span> Day Streak
-                </div>
                 <button onclick="window.router.navigate('creator')" class="bg-qBlue hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl text-sm transition shadow-sm">+ Create</button>
             </div>
         </header>
 
         <main id="app" class="flex-1 p-4 sm:p-8 max-w-7xl w-full mx-auto">
-            <!-- Dynamic Views Loaded Here -->
+            <!-- Dynamic Content -->
         </main>
     </div>
 
@@ -184,7 +181,7 @@
         function getSettings() {
             let s = localStorage.getItem(SETTINGS_KEY);
             if (!s) {
-                const def = { darkMode: false, streak: 1, lastLogin: new Date().toDateString() };
+                const def = { darkMode: false };
                 localStorage.setItem(SETTINGS_KEY, JSON.stringify(def));
                 return def;
             }
@@ -233,28 +230,6 @@
             }
         }
 
-        window.addEventListener('DOMContentLoaded', () => {
-            const settings = getSettings();
-            applyTheme(settings.darkMode);
-            
-            const today = new Date().toDateString();
-            if (settings.lastLogin !== today) {
-                const lastDate = new Date(settings.lastLogin);
-                const diffTime = Math.abs(new Date(today) - lastDate);
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                if (diffDays === 1) {
-                    settings.streak += 1;
-                } else if (diffDays > 1) {
-                    settings.streak = 1;
-                }
-                settings.lastLogin = today;
-                saveSettings(settings);
-            }
-            document.getElementById('streak-count').innerText = settings.streak;
-
-            window.router.navigate('dashboard');
-        });
-
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             sidebar.classList.toggle('-translate-x-full');
@@ -265,7 +240,6 @@
             return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
         }
 
-        /* --- STREAMING_CHUNK:Configuring SPA router and view handlers... --- */
         const router = {
             currentView: 'dashboard',
             params: {},
@@ -294,6 +268,8 @@
                     case 'test': app.innerHTML = renderTest(params.setId); initTestEngine(params.setId); break;
                     case 'match': app.innerHTML = renderMatch(params.setId); initMatchEngine(params.setId); break;
                     case 'blast': app.innerHTML = renderBlast(params.setId); initBlastEngine(params.setId); break;
+                    case 'blocks': app.innerHTML = renderBlocks(params.setId); initBlocksEngine(params.setId); break;
+                    case 'memory': app.innerHTML = renderMemory(params.setId); initMemoryEngine(params.setId); break;
                     default: app.innerHTML = renderDashboard();
                 }
             }
@@ -307,9 +283,9 @@
                 <div class="space-y-8 pb-16">
                     <div class="bg-gradient-to-r from-qBlue to-indigo-600 rounded-3xl p-8 text-white shadow-xl flex flex-col md:flex-row justify-between items-center gap-6">
                         <div class="space-y-2">
-                            <span class="bg-white/20 text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wider">Welcome back</span>
-                            <h1 class="text-3xl font-black">Ready to level up your study game?</h1>
-                            <p class="text-white/80 text-sm">Choose a study set or create a new one instantly.</p>
+                            <span class="bg-white/20 text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wider">Welcome</span>
+                            <h1 class="text-3xl font-black">Ready to study?</h1>
+                            <p class="text-white/80 text-sm">Select a study set or create a new one instantly.</p>
                         </div>
                         <button onclick="window.router.navigate('creator')" class="bg-white text-qBlue font-extrabold px-6 py-3 rounded-2xl shadow-lg hover:bg-slate-100 transition shrink-0">+ Create Study Set</button>
                     </div>
@@ -400,41 +376,36 @@
         }
 
         function deleteSet(id) {
-            const db = getDB();
-            db.sets = db.sets.filter(s => s.id !== id);
-            saveDB(db);
-            window.router.navigate('library');
+            showModal('Confirm Deletion', 'Delete this study set? This action is permanent.', () => {
+                const db = getDB();
+                db.sets = db.sets.filter(s => s.id !== id);
+                saveDB(db);
+                window.router.navigate('library');
+            });
         }
 
         function renderFolders() {
             const db = getDB();
             return `
                 <div class="space-y-6 pb-16">
-                    <div class="flex justify-between items-center bg-white dark:bg-[#181632] p-6 rounded-3xl border border-qBorderLight dark:border-qBorderDark shadow-sm">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-[#181632] p-6 rounded-3xl border border-qBorderLight dark:border-qBorderDark shadow-sm">
                         <div>
                             <h1 class="text-2xl font-black">Folders</h1>
                             <p class="text-sm text-slate-500">Organize your study sets into groups.</p>
                         </div>
-                        <button onclick="promptCreateFolder()" class="bg-qBlue hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl text-sm transition">+ New Folder</button>
+                        <button onclick="createNewFolderPrompt()" class="bg-qBlue hover:bg-blue-700 text-white font-bold px-4 py-2 rounded-xl text-sm transition shadow-sm">+ New Folder</button>
                     </div>
 
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        ${db.folders.map(folder => {
-                            const folderSets = db.sets.filter(s => s.folderId === folder.id);
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        ${db.folders.length === 0 ? `<p class="text-sm text-slate-400">No folders created yet.</p>` : db.folders.map(f => {
+                            const setNum = db.sets.filter(s => s.folderId === f.id).length;
                             return `
-                                <div class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-3xl p-6 space-y-4 shadow-sm">
-                                    <div class="flex justify-between items-center">
-                                        <h3 class="text-lg font-bold">📁 ${escapeHtml(folder.title)}</h3>
-                                        <button onclick="deleteFolder('${folder.id}')" class="text-xs text-red-500 hover:underline">Delete</button>
+                                <div class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-2xl p-6 flex items-center justify-between shadow-sm hover:shadow-md transition">
+                                    <div>
+                                        <h3 class="font-bold text-base mb-1">📁 ${escapeHtml(f.title)}</h3>
+                                        <span class="text-xs text-slate-400">${setNum} sets inside</span>
                                     </div>
-                                    <div class="space-y-2">
-                                        ${folderSets.length === 0 ? `<p class="text-xs text-slate-400">No sets in this folder.</p>` : folderSets.map(s => `
-                                            <div onclick="window.router.navigate('study', {setId: '${s.id}'})" class="flex justify-between items-center p-3 bg-slate-50 dark:bg-slate-800 rounded-xl cursor-pointer hover:bg-slate-100 transition text-xs font-semibold">
-                                                <span>${escapeHtml(s.title)}</span>
-                                                <span class="text-slate-400">${s.terms.length} terms</span>
-                                            </div>
-                                        `).join('')}
-                                    </div>
+                                    <button onclick="deleteFolder('${f.id}')" class="text-slate-400 hover:text-red-500 p-2">🗑️</button>
                                 </div>
                             `;
                         }).join('')}
@@ -443,126 +414,125 @@
             `;
         }
 
-        function promptCreateFolder() {
-            const html = `<input type="text" id="new-folder-input" placeholder="Folder Name..." class="w-full bg-slate-100 dark:bg-slate-800 border border-qBorderLight dark:border-qBorderDark p-3 rounded-xl text-sm outline-none">`;
-            showModal("Create Folder", "Enter a title for your new folder.", () => {
-                const val = document.getElementById('new-folder-input').value.trim();
-                if (!val) return;
-                const db = getDB();
-                db.folders.push({ id: 'folder_' + Date.now(), title: val });
-                saveDB(db);
-                window.router.navigate('folders');
+        function createNewFolderPrompt() {
+            const html = `<input type="text" id="new-folder-title-input" placeholder="Folder Title" class="w-full bg-slate-100 dark:bg-slate-800 p-3 rounded-xl text-xs outline-none">`;
+            showModal('Create Folder', 'Enter title for the folder.', () => {
+                const title = document.getElementById('new-folder-title-input').value.trim();
+                if (title) {
+                    const db = getDB();
+                    db.folders.push({ id: 'folder_' + Date.now(), title });
+                    saveDB(db);
+                    window.router.navigate('folders');
+                }
             }, html);
         }
 
         function deleteFolder(id) {
-            const db = getDB();
-            db.folders = db.folders.filter(f => f.id !== id);
-            db.sets.forEach(s => { if (s.folderId === id) s.folderId = ''; });
-            saveDB(db);
-            window.router.navigate('folders');
+            showModal('Delete Folder', 'Remove folder? Sets inside will be moved to Unsorted.', () => {
+                const db = getDB();
+                db.folders = db.folders.filter(f => f.id !== id);
+                db.sets.forEach(s => { if (s.folderId === id) s.folderId = ''; });
+                saveDB(db);
+                window.router.navigate('folders');
+            });
         }
 
-        /* --- STREAMING_CHUNK:Implementing set creator and editor engine... --- */
         let currentEditingSetId = null;
         let editorTerms = [];
 
-        function renderCreator(setId) {
-            currentEditingSetId = setId || null;
-            const db = getDB();
+        function renderCreator(setId = null) {
+            currentEditingSetId = setId;
             return `
-                <div class="max-w-4xl mx-auto space-y-6 pb-24">
+                <div class="max-w-4xl mx-auto space-y-6 pb-16">
                     <div class="flex justify-between items-center bg-white dark:bg-[#181632] p-6 rounded-3xl border border-qBorderLight dark:border-qBorderDark shadow-sm">
-                        <h1 class="text-2xl font-black">${setId ? 'Edit Study Set' : 'Create a New Set'}</h1>
-                        <button onclick="saveStudySet()" class="bg-qGreen hover:bg-green-600 text-white font-bold px-6 py-2.5 rounded-xl text-sm shadow-sm transition">Save Set</button>
+                        <h1 class="text-2xl font-black">${setId ? 'Edit Study Set' : 'Create New Study Set'}</h1>
+                        <button onclick="saveStudySet()" class="bg-qBlue hover:bg-blue-700 text-white font-extrabold px-6 py-2.5 rounded-xl text-sm transition shadow-md">Save Set</button>
                     </div>
 
-                    <div class="bg-white dark:bg-[#181632] p-6 rounded-3xl border border-qBorderLight dark:border-qBorderDark space-y-4 shadow-sm">
-                        <div class="flex justify-between items-center cursor-pointer" onclick="document.getElementById('creator-import-box').classList.toggle('hidden')">
-                            <h2 class="text-sm font-bold text-qBlue">📥 Import from Word, Excel, Quizlet, or JSON</h2>
-                            <span class="text-xs text-slate-400">Toggle</span>
+                    <div class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-3xl p-6 space-y-4 shadow-sm">
+                        <div class="space-y-1">
+                            <label class="text-xs font-bold uppercase tracking-wider text-slate-400">Title</label>
+                            <input type="text" id="set-title" placeholder="e.g. Biology - Chapter 1 Cell Structure" class="w-full bg-slate-50 dark:bg-slate-800 border border-qBorderLight dark:border-qBorderDark rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-qBlue">
                         </div>
-                        <div id="creator-import-box" class="hidden space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-                            <textarea id="creator-import-textarea" placeholder="Paste terms and definitions here (e.g. Term [Tab] Definition)..." class="w-full h-28 bg-slate-50 dark:bg-slate-800 border border-qBorderLight dark:border-qBorderDark rounded-xl p-3 text-xs font-mono outline-none"></textarea>
-                            <div class="flex flex-wrap gap-2 items-center">
-                                <select id="creator-import-sep" class="bg-slate-50 dark:bg-slate-800 border border-qBorderLight dark:border-qBorderDark p-2 rounded-xl text-xs outline-none">
-                                    <option value="auto">Auto-detect separator</option>
-                                    <option value="tab">Tab</option>
-                                    <option value="comma">Comma</option>
-                                    <option value="dash">Dash (-)</option>
-                                </select>
-                                <button onclick="processCreatorTextImport()" class="bg-qBlue text-white font-bold px-4 py-2 rounded-xl text-xs">Import Text</button>
-                                <input type="file" id="creator-json-file" accept=".json" onchange="processCreatorJsonImport(event)" class="text-xs text-slate-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-qBlue">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="space-y-1">
+                                <label class="text-xs font-bold uppercase tracking-wider text-slate-400">Description</label>
+                                <input type="text" id="set-desc" placeholder="Add a description..." class="w-full bg-slate-50 dark:bg-slate-800 border border-qBorderLight dark:border-qBorderDark rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-qBlue">
                             </div>
-                        </div>
-                    </div>
-
-                    <div class="bg-white dark:bg-[#181632] p-6 rounded-3xl border border-qBorderLight dark:border-qBorderDark space-y-4 shadow-sm">
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div class="md:col-span-2">
-                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Title</label>
-                                <input type="text" id="set-title" placeholder="e.g., Organic Chemistry Chapter 1" class="w-full bg-slate-50 dark:bg-slate-800 border border-qBorderLight dark:border-qBorderDark rounded-xl p-3 text-sm font-bold outline-none">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Folder</label>
-                                <select id="set-folder" class="w-full bg-slate-50 dark:bg-slate-800 border border-qBorderLight dark:border-qBorderDark rounded-xl p-3 text-sm font-semibold outline-none">
-                                    <option value="">Unsorted</option>
-                                    ${db.folders.map(f => `<option value="${f.id}">${escapeHtml(f.title)}</option>`).join('')}
+                            <div class="space-y-1">
+                                <label class="text-xs font-bold uppercase tracking-wider text-slate-400">Folder</label>
+                                <select id="set-folder" class="w-full bg-slate-50 dark:bg-slate-800 border border-qBorderLight dark:border-qBorderDark rounded-xl p-3 text-sm outline-none focus:ring-2 focus:ring-qBlue">
+                                    <option value="">(No Folder)</option>
                                 </select>
                             </div>
                         </div>
-                        <div>
-                            <label class="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Description</label>
-                            <textarea id="set-desc" rows="2" placeholder="Add a description..." class="w-full bg-slate-50 dark:bg-slate-800 border border-qBorderLight dark:border-qBorderDark rounded-xl p-3 text-sm outline-none"></textarea>
+                    </div>
+
+                    <div class="flex gap-2">
+                        <button onclick="document.getElementById('creator-import-box').classList.toggle('hidden')" class="text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 px-4 py-2 rounded-xl transition">📥 Import Data</button>
+                    </div>
+
+                    <div id="creator-import-box" class="hidden bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-3xl p-6 space-y-3 shadow-sm">
+                        <p class="text-xs text-slate-500">Paste text separated by tabs, commas, or dashes.</p>
+                        <textarea id="creator-import-textarea" placeholder="Term 1 \t Definition 1&#10;Term 2 \t Definition 2" class="w-full h-28 bg-slate-50 dark:bg-slate-800 border border-qBorderLight dark:border-qBorderDark p-3 rounded-xl text-xs font-mono outline-none"></textarea>
+                        <div class="flex gap-2">
+                            <select id="creator-import-sep" class="bg-slate-50 dark:bg-slate-800 border border-qBorderLight dark:border-qBorderDark p-2 rounded-xl text-xs outline-none">
+                                <option value="auto">Auto Separator</option>
+                                <option value="tab">Tab</option>
+                                <option value="comma">Comma</option>
+                                <option value="dash">Dash (-)</option>
+                            </select>
+                            <button onclick="processCreatorTextImport()" class="bg-qBlue text-white font-bold px-4 py-2 rounded-xl text-xs">Process Import</button>
                         </div>
                     </div>
 
-                    <div id="editor-cards-container" class="space-y-4"></div>
+                    <div id="editor-terms-list" class="space-y-4"></div>
 
-                    <div class="flex justify-center pt-2">
-                        <button onclick="addEditorCard()" class="bg-white dark:bg-[#181632] hover:bg-slate-50 dark:hover:bg-slate-800 border-2 border-dashed border-qBlue text-qBlue font-bold px-8 py-3 rounded-2xl text-sm transition w-full max-w-md">+ Add Card</button>
-                    </div>
+                    <button onclick="addEditorCard()" class="w-full py-4 border-2 border-dashed border-qBorderLight dark:border-qBorderDark rounded-3xl text-slate-400 font-bold hover:border-qBlue hover:text-qBlue transition text-sm">+ Add Card</button>
                 </div>
             `;
         }
 
         function initCreatorForm(setId) {
-            editorTerms = [];
+            const db = getDB();
+            const folderSel = document.getElementById('set-folder');
+            folderSel.innerHTML = `<option value="">(No Folder)</option>` + db.folders.map(f => `<option value="${f.id}">${escapeHtml(f.title)}</option>`).join('');
+
             if (setId) {
-                const db = getDB();
                 const set = db.sets.find(s => s.id === setId);
                 if (set) {
                     document.getElementById('set-title').value = set.title;
                     document.getElementById('set-desc').value = set.description || '';
-                    document.getElementById('set-folder').value = set.folderId || '';
-                    editorTerms = set.terms.map(t => ({ ...t }));
+                    folderSel.value = set.folderId || '';
+                    editorTerms = JSON.parse(JSON.stringify(set.terms));
                 }
             } else {
                 editorTerms = [
-                    { id: 't_1', term: '', definition: '', image: '', starred: false },
-                    { id: 't_2', term: '', definition: '', image: '', starred: false },
-                    { id: 't_3', term: '', definition: '', image: '', starred: false }
+                    { id: 't_' + Math.random(), term: '', definition: '', image: '', starred: false },
+                    { id: 't_' + Math.random(), term: '', definition: '', image: '', starred: false }
                 ];
             }
             renderEditorCards();
         }
 
         function renderEditorCards() {
-            const container = document.getElementById('editor-cards-container');
+            const container = document.getElementById('editor-terms-list');
             container.innerHTML = editorTerms.map((item, idx) => `
-                <div class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-3xl p-6 shadow-sm space-y-4 relative group">
-                    <div class="flex justify-between items-center">
-                        <span class="text-xs font-bold text-slate-400 font-mono">Card #${idx + 1}</span>
+                <div class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-3xl p-6 space-y-4 shadow-sm relative group">
+                    <div class="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 pb-3">
+                        <span class="text-xs font-bold text-slate-400 font-mono">${idx + 1}</span>
                         <button onclick="removeEditorCard('${item.id}')" class="text-slate-400 hover:text-red-500 text-sm">🗑️</button>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div class="space-y-1 relative">
                             <label class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Term</label>
                             <textarea rows="2" oninput="updateEditorTerm('${item.id}', 'term', this.value); handleSuggestions(this, 'term', '${item.id}')" placeholder="Enter term" class="w-full bg-slate-50 dark:bg-slate-800 border border-qBorderLight dark:border-qBorderDark rounded-xl p-3 text-sm outline-none resize-none">${escapeHtml(item.term)}</textarea>
+                            <div id="sug-term-${item.id}" class="absolute z-20 left-0 right-0 top-full bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-xl shadow-lg hidden overflow-hidden"></div>
                         </div>
                         <div class="space-y-1 relative">
                             <label class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Definition</label>
                             <textarea rows="2" oninput="updateEditorTerm('${item.id}', 'definition', this.value); handleSuggestions(this, 'def', '${item.id}')" placeholder="Enter definition" class="w-full bg-slate-50 dark:bg-slate-800 border border-qBorderLight dark:border-qBorderDark rounded-xl p-3 text-sm outline-none resize-none">${escapeHtml(item.definition)}</textarea>
+                            <div id="sug-def-${item.id}" class="absolute z-20 left-0 right-0 top-full bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-xl shadow-lg hidden overflow-hidden"></div>
                         </div>
                     </div>
                     <div class="flex items-center gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
@@ -578,7 +548,40 @@
         }
 
         function handleSuggestions(el, type, id) {
-            // Suggestion logic placeholder or lightweight mock suggestions
+            const query = el.value.trim().toLowerCase();
+            const box = document.getElementById(`sug-${type}-${id}`);
+            if (!box) return;
+            if (query.length < 2) {
+                box.classList.add('hidden');
+                return;
+            }
+            const db = getDB();
+            let matches = [];
+            db.sets.forEach(s => {
+                s.terms.forEach(t => {
+                    const val = type === 'term' ? t.term : t.definition;
+                    if (val.toLowerCase().includes(query) && !matches.includes(val)) {
+                        matches.push(val);
+                    }
+                });
+            });
+            matches = matches.slice(0, 3);
+            if (matches.length === 0) {
+                box.classList.add('hidden');
+                return;
+            }
+            box.innerHTML = matches.map(m => `
+                <div onclick="applySuggestion('${id}', '${type}', \`${escapeHtml(m)}\`)" class="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer text-xs font-semibold truncate">
+                    ${escapeHtml(m)}
+                </div>
+            `).join('');
+            box.classList.remove('hidden');
+        }
+
+        function applySuggestion(id, type, value) {
+            const field = type === 'term' ? 'term' : 'definition';
+            updateEditorTerm(id, field, value);
+            renderEditorCards();
         }
 
         function addEditorCard() {
@@ -638,27 +641,6 @@
             }
         }
 
-        function processCreatorJsonImport(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function(evt) {
-                try {
-                    const parsed = JSON.parse(evt.target.result);
-                    if (parsed.title) document.getElementById('set-title').value = parsed.title;
-                    if (parsed.description) document.getElementById('set-desc').value = parsed.description;
-                    if (parsed.terms && Array.isArray(parsed.terms)) {
-                        editorTerms = parsed.terms.map(t => ({ ...t, id: 't_' + Math.random() }));
-                        renderEditorCards();
-                        document.getElementById('creator-import-box').classList.add('hidden');
-                    }
-                } catch (err) {
-                    showModal('Error', 'Invalid JSON file.');
-                }
-            };
-            reader.readAsText(file);
-        }
-
         function handleImageUpload(e, id) {
             const file = e.target.files[0];
             if (!file) return;
@@ -715,7 +697,6 @@
             window.router.navigate('study', { setId });
         }
 
-        /* --- STREAMING_CHUNK:Implementing study hub and game modes... --- */
         function renderStudyHub(setId) {
             const db = getDB();
             const set = db.sets.find(s => s.id === setId);
@@ -727,20 +708,19 @@
                         <div class="space-y-2">
                             <button onclick="window.router.navigate('library')" class="text-xs font-bold text-qBlue uppercase tracking-wider hover:underline">&larr; Back to Library</button>
                             <h1 class="text-3xl font-black">${escapeHtml(set.title)}</h1>
-                            <p class="text-sm text-slate-500">${escapeHtml(set.description || 'No description.')}</p>
+                            <p class="text-sm text-slate-500 dark:text-slate-400">${escapeHtml(set.description || 'No description provided.')}</p>
                         </div>
-                        <div class="flex items-center gap-2">
-                            <button onclick="window.router.navigate('creator', {setId: '${set.id}'})" class="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 font-semibold rounded-xl text-xs transition">Edit Set</button>
-                            <button onclick="shareSetCode('${set.id}')" class="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 font-semibold rounded-xl text-xs transition">🔗 Share</button>
-                            <button onclick="printStudyGuide('${set.id}')" class="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 font-semibold rounded-xl text-xs transition">🖨️ Print</button>
+                        <div class="flex gap-2">
+                            <button onclick="window.router.navigate('creator', {setId: '${set.id}'})" class="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 font-bold px-4 py-2.5 rounded-xl text-xs transition">✏️ Edit</button>
+                            <button onclick="shareSetCode('${set.id}')" class="bg-qBlue text-white font-bold px-4 py-2.5 rounded-xl text-xs transition shadow-sm">🔗 Share</button>
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div onclick="window.router.navigate('flashcards', {setId: '${set.id}'})" class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-3xl p-6 cursor-pointer hover:shadow-lg transition group">
                             <div class="text-2xl mb-3">🎴</div>
                             <h3 class="font-bold text-base mb-1 group-hover:text-qBlue">Flashcards</h3>
-                            <p class="text-xs text-slate-400">Flip cards, audio, shortcuts.</p>
+                            <p class="text-xs text-slate-400">Sort cards by knowledge.</p>
                         </div>
                         <div onclick="window.router.navigate('learn', {setId: '${set.id}'})" class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-3xl p-6 cursor-pointer hover:shadow-lg transition group">
                             <div class="text-2xl mb-3">🧠</div>
@@ -762,6 +742,16 @@
                             <h3 class="font-bold text-base mb-1 group-hover:text-qBlue">Blast</h3>
                             <p class="text-xs text-slate-400">Asteroid shooter game.</p>
                         </div>
+                        <div onclick="window.router.navigate('blocks', {setId: '${set.id}'})" class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-3xl p-6 cursor-pointer hover:shadow-lg transition group">
+                            <div class="text-2xl mb-3">🧱</div>
+                            <h3 class="font-bold text-base mb-1 group-hover:text-qBlue">Block Blast</h3>
+                            <p class="text-xs text-slate-400">Place blocks & answer terms to unlock next tiles!</p>
+                        </div>
+                        <div onclick="window.router.navigate('memory', {setId: '${set.id}'})" class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-3xl p-6 cursor-pointer hover:shadow-lg transition group">
+                            <div class="text-2xl mb-3">🃏</div>
+                            <h3 class="font-bold text-base mb-1 group-hover:text-qBlue">Memory Grid</h3>
+                            <p class="text-xs text-slate-400">Flip tiles to match pairs.</p>
+                        </div>
                     </div>
 
                     <div class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark rounded-3xl p-8 space-y-4 shadow-sm">
@@ -782,38 +772,43 @@
             `;
         }
 
-        /* --- STREAMING_CHUNK:Implementing Flashcards and learning engines... --- */
-        let fcState = { set: null, cards: [], index: 0, flipped: false };
+        let fcState = { set: null, cards: [], index: 0, flipped: false, swapRoles: false };
 
         function renderFlashcards(setId) {
             return `
                 <div class="max-w-3xl mx-auto space-y-6 pb-16 flex flex-col items-center">
                     <div class="w-full flex justify-between items-center bg-white dark:bg-[#181632] px-6 py-4 rounded-2xl border border-qBorderLight dark:border-qBorderDark shadow-sm">
                         <button onclick="window.router.navigate('study', {setId: '${setId}'})" class="text-xs font-bold text-qBlue uppercase tracking-wider hover:underline">&larr; Back</button>
-                        <span id="fc-counter" class="text-sm font-bold font-mono">1 / 1</span>
+                        <div class="flex items-center gap-4">
+                            <label class="text-xs font-bold flex items-center gap-1 cursor-pointer">
+                                <input type="checkbox" id="fc-swap" onchange="toggleFcSwap()" class="rounded"> Swap Term/Def
+                            </label>
+                            <button onclick="resetFcSession()" class="text-xs bg-slate-100 dark:bg-slate-800 px-3 py-1.5 rounded-lg font-bold">Reset Cards</button>
+                            <span id="fc-counter" class="text-sm font-bold font-mono">1 / 1</span>
+                        </div>
                     </div>
 
                     <div class="w-full h-96 perspective-1000 cursor-pointer" onclick="flipFlashcard()">
-                        <div id="fc-inner" class="relative w-full h-full duration-300 transform-style-3d shadow-xl rounded-3xl border border-qBorderLight dark:border-qBorderDark bg-white dark:bg-[#181632]">
+                        <div id="fc-inner" class="relative w-full h-full transform-style-3d shadow-xl rounded-3xl border border-qBorderLight dark:border-qBorderDark bg-white dark:bg-[#181632]">
                             <div class="absolute inset-0 backface-hidden flex flex-col items-center justify-center p-8 text-center">
-                                <span class="absolute top-6 left-6 text-xs font-bold text-slate-400 uppercase">Term</span>
+                                <span id="fc-front-label" class="absolute top-6 left-6 text-xs font-bold text-slate-400 uppercase">Term</span>
                                 <h2 id="fc-front" class="text-2xl sm:text-3xl font-black mb-4"></h2>
                                 <div id="fc-front-img" class="max-h-36"></div>
-                                <span class="absolute bottom-6 text-xs text-slate-400">Click or press Space to flip</span>
+                                <span class="absolute bottom-6 text-xs text-slate-400">Click or press Space/Arrows to flip</span>
                             </div>
                             <div class="absolute inset-0 backface-hidden rotate-y-180 flex flex-col items-center justify-center p-8 text-center">
-                                <span class="absolute top-6 left-6 text-xs font-bold text-qBlue uppercase">Definition</span>
+                                <span id="fc-back-label" class="absolute top-6 left-6 text-xs font-bold text-qBlue uppercase">Definition</span>
                                 <h2 id="fc-back" class="text-xl sm:text-2xl font-semibold mb-4"></h2>
                                 <div id="fc-back-img" class="max-h-36"></div>
-                                <span class="absolute bottom-6 text-xs text-slate-400">Click or press Space to flip</span>
+                                <span class="absolute bottom-6 text-xs text-slate-400">Click or press Space/Arrows to flip</span>
                             </div>
                         </div>
                     </div>
 
-                    <div class="flex items-center justify-between w-full px-4">
-                        <button onclick="prevFlashcard()" class="px-6 py-3 bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark font-bold rounded-2xl shadow-sm hover:bg-slate-50">&larr; Prev</button>
+                    <div class="flex items-center justify-between w-full px-4 gap-2">
+                        <button onclick="markFcCard(false)" class="flex-1 py-3 bg-red-100 dark:bg-red-950/40 text-red-600 font-bold rounded-2xl shadow-sm hover:bg-red-200">❌ Don't Know</button>
                         <button onclick="speakCurrentCard()" class="px-4 py-3 bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark font-bold rounded-2xl shadow-sm hover:bg-slate-50">🔊 Read</button>
-                        <button onclick="nextFlashcard()" class="px-6 py-3 bg-qBlue text-white font-bold rounded-2xl shadow-sm hover:bg-blue-700">Next &rarr;</button>
+                        <button onclick="markFcCard(true)" class="flex-1 py-3 bg-green-100 dark:bg-green-950/40 text-green-600 font-bold rounded-2xl shadow-sm hover:bg-green-200">✅ Know</button>
                     </div>
                 </div>
             `;
@@ -827,28 +822,79 @@
             fcState.cards = [...set.terms];
             fcState.index = 0;
             fcState.flipped = false;
+            fcState.swapRoles = false;
             updateFlashcardUI();
 
             window.onkeydown = function(e) {
                 if (window.router.currentView !== 'flashcards') return;
-                if (e.code === 'Space') { e.preventDefault(); flipFlashcard(); }
-                else if (e.code === 'ArrowRight') { nextFlashcard(); }
-                else if (e.code === 'ArrowLeft') { prevFlashcard(); }
+                if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'ArrowDown') {
+                    e.preventDefault();
+                    flipFlashcard();
+                } else if (e.code === 'ArrowRight') {
+                    markFcCard(true);
+                } else if (e.code === 'ArrowLeft') {
+                    markFcCard(false);
+                }
             };
         }
 
-        function updateFlashcardUI() {
+        function toggleFcSwap() {
+            fcState.swapRoles = document.getElementById('fc-swap').checked;
+            updateFlashcardUI();
+        }
+
+        function resetFcSession() {
+            fcState.cards = [...fcState.set.terms];
+            fcState.index = 0;
+            fcState.flipped = false;
+            updateFlashcardUI();
+        }
+
+        function markFcCard(know) {
             if (fcState.cards.length === 0) return;
+            if (know) {
+                fcState.cards.splice(fcState.index, 1);
+            } else {
+                fcState.index = (fcState.index + 1) % fcState.cards.length;
+            }
+            if (fcState.index >= fcState.cards.length) {
+                fcState.index = 0;
+            }
+            fcState.flipped = false;
+            updateFlashcardUI();
+        }
+
+        function updateFlashcardUI() {
+            const inner = document.getElementById('fc-inner');
+            if (fcState.cards.length === 0) {
+                document.getElementById('fc-front').innerText = "Session Complete!";
+                document.getElementById('fc-back').innerText = "You marked all cards as known.";
+                document.getElementById('fc-counter').innerText = `0 / 0`;
+                inner.classList.remove('transition-transform', 'duration-300');
+                inner.style.transform = 'rotateY(0deg)';
+                return;
+            }
             const c = fcState.cards[fcState.index];
-            document.getElementById('fc-front').innerText = c.term;
-            document.getElementById('fc-back').innerText = c.definition;
+            const termText = fcState.swapRoles ? c.definition : c.term;
+            const defText = fcState.swapRoles ? c.term : c.definition;
+
+            document.getElementById('fc-front-label').innerText = fcState.swapRoles ? "Definition" : "Term";
+            document.getElementById('fc-back-label').innerText = fcState.swapRoles ? "Term" : "Definition";
+
+            document.getElementById('fc-front').innerText = termText;
+            document.getElementById('fc-back').innerText = defText;
             document.getElementById('fc-counter').innerText = `${fcState.index + 1} / ${fcState.cards.length}`;
             
             document.getElementById('fc-front-img').innerHTML = c.image ? `<img src="${c.image}" class="h-28 rounded-xl object-cover border border-qBorderLight dark:border-qBorderDark">` : '';
             document.getElementById('fc-back-img').innerHTML = c.image ? `<img src="${c.image}" class="h-28 rounded-xl object-cover border border-qBorderLight dark:border-qBorderDark">` : '';
 
-            const inner = document.getElementById('fc-inner');
-            inner.style.transform = fcState.flipped ? 'rotateY(180deg)' : 'rotateY(0deg)';
+            if (fcState.flipped) {
+                inner.classList.add('transition-transform', 'duration-300');
+                inner.style.transform = 'rotateY(180deg)';
+            } else {
+                inner.classList.remove('transition-transform', 'duration-300');
+                inner.style.transform = 'rotateY(0deg)';
+            }
         }
 
         function flipFlashcard() {
@@ -857,21 +903,12 @@
             updateFlashcardUI();
         }
 
-        function nextFlashcard() {
-            fcState.flipped = false;
-            fcState.index = (fcState.index + 1) % fcState.cards.length;
-            updateFlashcardUI();
-        }
-
-        function prevFlashcard() {
-            fcState.flipped = false;
-            fcState.index = (fcState.index - 1 + fcState.cards.length) % fcState.cards.length;
-            updateFlashcardUI();
-        }
-
         function speakCurrentCard() {
+            if (fcState.cards.length === 0) return;
             const c = fcState.cards[fcState.index];
-            const text = fcState.flipped ? c.definition : c.term;
+            const termText = fcState.swapRoles ? c.definition : c.term;
+            const defText = fcState.swapRoles ? c.term : c.definition;
+            const text = fcState.flipped ? defText : termText;
             const utterance = new SpeechSynthesisUtterance(text);
             window.speechSynthesis.speak(utterance);
         }
@@ -956,7 +993,6 @@
             }
         }
 
-        /* --- STREAMING_CHUNK:Implementing Test and arcade matching games... --- */
         let testState = { set: null, questions: [] };
 
         function renderTest(setId) {
@@ -1014,27 +1050,32 @@
                 const card = document.getElementById(`test-card-${idx}`);
                 if (selected && selected.value === q.correct) {
                     score++;
-                    card.classList.add('border-green-400', 'bg-green-50/20');
+                    card.classList.add('border-green-500');
                 } else {
-                    card.classList.add('border-red-400', 'bg-red-50/20');
+                    card.classList.add('border-red-500');
                 }
             });
-            playSound('success');
-            document.getElementById('test-submit-wrapper').innerHTML = `
-                <div class="w-full bg-white dark:bg-[#181632] p-6 rounded-2xl border border-qBorderLight dark:border-qBorderDark flex justify-between items-center">
-                    <span class="font-black text-lg">Score: ${score} / ${testState.questions.length}</span>
-                    <button onclick="window.router.navigate('study', {setId: '${testState.set.id}'})" class="bg-qBlue text-white font-bold px-6 py-2 rounded-xl text-sm">Finish</button>
-                </div>
-            `;
+            const pct = Math.round((score / testState.questions.length) * 100);
+            showModal('Test Results', `You scored ${pct}% (${score}/${testState.questions.length})`);
         }
 
-        let matchState = { set: null, items: [], selected: null, timer: 0, interval: null, playing: false };
+        let matchState = { set: null, items: [], selected: null, timer: 0, interval: null, playing: false, swapRoles: false, difficulty: 'normal' };
 
         function renderMatch(setId) {
             return `
                 <div class="max-w-4xl mx-auto space-y-6 pb-16">
-                    <div class="flex justify-between items-center bg-white dark:bg-[#181632] px-6 py-4 rounded-2xl border border-qBorderLight dark:border-qBorderDark shadow-sm">
+                    <div class="flex flex-wrap justify-between items-center bg-white dark:bg-[#181632] px-6 py-4 rounded-2xl border border-qBorderLight dark:border-qBorderDark shadow-sm gap-4">
                         <button onclick="window.router.navigate('study', {setId: '${setId}'})" class="text-xs font-bold text-qBlue uppercase tracking-wider hover:underline">&larr; Back</button>
+                        <div class="flex items-center gap-3 text-xs font-bold">
+                            <label class="flex items-center gap-1 cursor-pointer">
+                                <input type="checkbox" id="match-swap" onchange="initMatchEngine('${setId}')"> Swap Roles
+                            </label>
+                            <select id="match-diff" onchange="initMatchEngine('${setId}')" class="bg-slate-100 dark:bg-slate-800 p-1.5 rounded-lg border border-qBorderLight dark:border-qBorderDark outline-none">
+                                <option value="easy">Easy (4 Pairs)</option>
+                                <option value="normal" selected>Normal (6 Pairs)</option>
+                                <option value="hard">Hard (8 Pairs)</option>
+                            </select>
+                        </div>
                         <span id="match-timer" class="text-lg font-black font-mono text-qBlue">0.0s</span>
                     </div>
                     <div id="match-board" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4"></div>
@@ -1048,11 +1089,18 @@
             if (!set || set.terms.length === 0) return;
             matchState.set = set;
 
-            const subset = [...set.terms].sort(() => Math.random() - 0.5).slice(0, 6);
+            const swap = document.getElementById('match-swap') ? document.getElementById('match-swap').checked : false;
+            const diff = document.getElementById('match-diff') ? document.getElementById('match-diff').value : 'normal';
+
+            let count = 6;
+            if (diff === 'easy') count = 4;
+            if (diff === 'hard') count = 8;
+
+            const subset = [...set.terms].sort(() => Math.random() - 0.5).slice(0, count);
             let deck = [];
             subset.forEach(t => {
-                deck.push({ id: t.id, text: t.term, type: 'term', matched: false });
-                deck.push({ id: t.id, text: t.definition, type: 'def', matched: false });
+                deck.push({ id: t.id, text: swap ? t.definition : t.term, type: 'term', matched: false });
+                deck.push({ id: t.id, text: swap ? t.term : t.definition, type: 'def', matched: false });
             });
             deck.sort(() => Math.random() - 0.5);
 
@@ -1117,20 +1165,29 @@
             }
         }
 
-        /* --- STREAMING_CHUNK:Implementing Blast arcade shooter and utility modal logic... --- */
-        let blastState = { set: null, activeAsteroids: [], score: 0, interval: null, canvas: null, ctx: null, running: false };
+        let blastState = { set: null, activeAsteroids: [], score: 0, interval: null, canvas: null, ctx: null, running: false, swapRoles: false, speedMult: 1 };
 
         function renderBlast(setId) {
             return `
                 <div class="max-w-4xl mx-auto space-y-4 pb-16 flex flex-col items-center">
-                    <div class="w-full flex justify-between items-center bg-white dark:bg-[#181632] px-6 py-4 rounded-2xl border border-qBorderLight dark:border-qBorderDark shadow-sm">
+                    <div class="w-full flex flex-wrap justify-between items-center bg-white dark:bg-[#181632] px-6 py-4 rounded-2xl border border-qBorderLight dark:border-qBorderDark shadow-sm gap-4">
                         <button onclick="window.router.navigate('study', {setId: '${setId}'})" class="text-xs font-bold text-qBlue uppercase tracking-wider hover:underline">&larr; Back</button>
+                        <div class="flex items-center gap-3 text-xs font-bold">
+                            <label class="flex items-center gap-1 cursor-pointer">
+                                <input type="checkbox" id="blast-swap" onchange="initBlastEngine('${setId}')"> Swap Prompt/Answer
+                            </label>
+                            <select id="blast-diff" onchange="initBlastEngine('${setId}')" class="bg-slate-100 dark:bg-slate-800 p-1.5 rounded-lg border border-qBorderLight dark:border-qBorderDark outline-none">
+                                <option value="0.5">Slow</option>
+                                <option value="1" selected>Normal Speed</option>
+                                <option value="1.8">Fast Speed</option>
+                            </select>
+                        </div>
                         <span id="blast-score" class="text-sm font-black font-mono">Score: 0</span>
                     </div>
                     <div class="relative w-full bg-slate-900 rounded-3xl overflow-hidden border border-qBorderLight dark:border-qBorderDark shadow-2xl">
                         <canvas id="blast-canvas" width="800" height="450" class="w-full block"></canvas>
                         <div id="blast-input-bar" class="absolute bottom-4 left-4 right-4 flex gap-2">
-                            <input type="text" id="blast-typing-input" onkeydown="handleBlastInput(event)" placeholder="Type matching definition & press Enter..." class="w-full bg-black/60 backdrop-blur-md border border-slate-700 text-white px-4 py-3 rounded-2xl text-sm outline-none focus:border-qBlue">
+                            <input type="text" id="blast-typing-input" onkeydown="handleBlastInput(event)" placeholder="Type answer & press Enter..." class="w-full bg-black/60 backdrop-blur-md border border-slate-700 text-white px-4 py-3 rounded-2xl text-sm outline-none focus:border-qBlue">
                         </div>
                     </div>
                 </div>
@@ -1141,10 +1198,16 @@
             const db = getDB();
             const set = db.sets.find(s => s.id === setId);
             if (!set || set.terms.length === 0) return;
+
+            const swap = document.getElementById('blast-swap') ? document.getElementById('blast-swap').checked : false;
+            const diff = document.getElementById('blast-diff') ? parseFloat(document.getElementById('blast-diff').value) : 1;
+
             blastState.set = set;
             blastState.score = 0;
             blastState.activeAsteroids = [];
             blastState.running = true;
+            blastState.swapRoles = swap;
+            blastState.speedMult = diff;
 
             const canvas = document.getElementById('blast-canvas');
             blastState.canvas = canvas;
@@ -1158,22 +1221,26 @@
                     const termObj = set.terms[Math.floor(Math.random() * set.terms.length)];
                     blastState.activeAsteroids.push({
                         id: termObj.id,
-                        term: termObj.term,
-                        definition: termObj.definition,
+                        prompt: blastState.swapRoles ? termObj.definition : termObj.term,
+                        target: blastState.swapRoles ? termObj.term : termObj.definition,
                         x: Math.random() * 600 + 50,
                         y: -30,
-                        speed: 0.5 + Math.random() * 0.8
+                        speed: (0.5 + Math.random() * 0.8) * blastState.speedMult
                     });
                 }
             }, 3000);
 
             requestAnimationFrame(blastLoop);
-            setTimeout(() => document.getElementById('blast-typing-input').focus(), 100);
+            setTimeout(() => {
+                const el = document.getElementById('blast-typing-input');
+                if (el) el.focus();
+            }, 100);
         }
 
         function blastLoop() {
             if (!blastState.running) return;
             const ctx = blastState.ctx;
+            if (!ctx) return;
             ctx.clearRect(0, 0, 800, 450);
 
             ctx.fillStyle = '#ffffff';
@@ -1194,7 +1261,7 @@
                 ctx.fillStyle = '#ffffff';
                 ctx.font = '12px sans-serif';
                 ctx.textAlign = 'center';
-                ctx.fillText(ast.term, ast.x, ast.y + 4);
+                ctx.fillText(ast.prompt.substring(0, 15), ast.x, ast.y + 4);
 
                 if (ast.y > 430) {
                     blastState.running = false;
@@ -1208,7 +1275,7 @@
         function handleBlastInput(e) {
             if (e.key === 'Enter') {
                 const val = e.target.value.trim().toLowerCase();
-                const matchedIdx = blastState.activeAsteroids.findIndex(a => a.definition.toLowerCase() === val);
+                const matchedIdx = blastState.activeAsteroids.findIndex(a => a.target.toLowerCase() === val);
                 if (matchedIdx >= 0) {
                     blastState.activeAsteroids.splice(matchedIdx, 1);
                     blastState.score += 100;
@@ -1217,6 +1284,412 @@
                     e.target.value = '';
                 } else {
                     playSound('error');
+                }
+            }
+        }
+
+        const BLOCK_SHAPES = [
+            [[1]],
+            [[1, 1]],
+            [[1], [1]],
+            [[1, 1, 1]],
+            [[1], [1], [1]],
+            [[1, 1], [1, 1]],
+            [[1, 1, 1], [0, 1, 0]],
+            [[1, 0], [1, 0], [1, 1]],
+            [[1, 1, 1, 1]],
+            [[1, 1], [1, 0]],
+            [[1, 1, 1], [1, 0, 0]]
+        ];
+
+        let blocksState = {
+            set: null,
+            grid: [],
+            score: 0,
+            placedCount: 0,
+            dock: [null, null, null],
+            selectedShapeIndex: null,
+            swapRoles: false,
+            currentTermQuestion: null,
+            modalOpen: false
+        };
+
+        function renderBlocks(setId) {
+            return `
+                <div class="max-w-4xl mx-auto space-y-4 pb-16">
+                    <div class="flex flex-wrap justify-between items-center bg-white dark:bg-[#181632] px-6 py-4 rounded-2xl border border-qBorderLight dark:border-qBorderDark shadow-sm gap-4">
+                        <button onclick="window.router.navigate('study', {setId: '${setId}'})" class="text-xs font-bold text-qBlue uppercase tracking-wider hover:underline">&larr; Back</button>
+                        <div class="flex items-center gap-3 text-xs font-bold">
+                            <label class="flex items-center gap-1 cursor-pointer">
+                                <input type="checkbox" id="blocks-swap" onchange="toggleBlocksSwap('${setId}')"> Swap Mode (Test Term vs Def)
+                            </label>
+                            <button onclick="initBlocksEngine('${setId}')" class="bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-lg text-xs font-bold">Restart</button>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <span id="blocks-counter" class="text-xs font-bold text-slate-400">Placed: 0/3</span>
+                            <span id="blocks-score" class="text-sm font-black font-mono text-qBlue">Score: 0</span>
+                        </div>
+                    </div>
+
+                    <div id="blocks-main-area" class="flex flex-col md:flex-row gap-6 items-center justify-center bg-white dark:bg-[#181632] p-6 rounded-3xl border border-qBorderLight dark:border-qBorderDark shadow-lg">
+                        <!-- 8x8 Grid -->
+                        <div id="blocks-grid" class="grid grid-cols-8 gap-1 p-2 bg-slate-900 rounded-2xl w-80 h-80 sm:w-96 sm:h-96 select-none"></div>
+
+                        <!-- Tray / Dock -->
+                        <div class="flex md:flex-col gap-4 items-center justify-center w-full md:w-48 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-qBorderLight dark:border-qBorderDark min-h-[140px]">
+                            <div class="text-xs font-bold uppercase tracking-wider text-slate-400 w-full text-center md:text-left mb-1">Available Tiles</div>
+                            <div id="blocks-dock" class="flex md:flex-col gap-4 justify-around items-center w-full"></div>
+                        </div>
+                    </div>
+
+                    <!-- Challenge Overlay Modal for 3-Tile Unlock -->
+                    <div id="blocks-challenge-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                        <div class="bg-white dark:bg-[#181632] border border-qBorderLight dark:border-qBorderDark p-6 sm:p-8 rounded-3xl max-w-lg w-full shadow-2xl space-y-5 animate-fade-in">
+                            <div class="flex justify-between items-center border-b border-qBorderLight dark:border-qBorderDark pb-3">
+                                <span class="bg-qBlue text-white text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">Quiz Checkpoint</span>
+                                <span class="text-xs font-bold text-slate-400">3 Tiles Placed!</span>
+                            </div>
+                            <div>
+                                <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1" id="blocks-q-type-label">Select the correct answer to unlock 3 new tiles:</p>
+                                <h3 id="blocks-q-prompt" class="text-lg font-black text-slate-800 dark:text-slate-100"></h3>
+                            </div>
+                            <div id="blocks-q-options" class="space-y-2.5"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function toggleBlocksSwap(setId) {
+            blocksState.swapRoles = document.getElementById('blocks-swap').checked;
+        }
+
+        function initBlocksEngine(setId) {
+            const db = getDB();
+            const set = db.sets.find(s => s.id === setId);
+            if (!set || set.terms.length === 0) return;
+
+            blocksState.set = set;
+            blocksState.score = 0;
+            blocksState.placedCount = 0;
+            blocksState.selectedShapeIndex = null;
+            blocksState.modalOpen = false;
+            blocksState.swapRoles = document.getElementById('blocks-swap') ? document.getElementById('blocks-swap').checked : false;
+
+            // Initialize empty 8x8 grid
+            blocksState.grid = Array(8).fill(null).map(() => Array(8).fill(0));
+
+            // Populate initial 3 dock shapes
+            replenishBlocksDock();
+            renderBlocksBoard();
+        }
+
+        function replenishBlocksDock() {
+            blocksState.dock = [
+                BLOCK_SHAPES[Math.floor(Math.random() * BLOCK_SHAPES.length)],
+                BLOCK_SHAPES[Math.floor(Math.random() * BLOCK_SHAPES.length)],
+                BLOCK_SHAPES[Math.floor(Math.random() * BLOCK_SHAPES.length)]
+            ];
+            blocksState.selectedShapeIndex = null;
+        }
+
+        function renderBlocksBoard() {
+            const gridEl = document.getElementById('blocks-grid');
+            const dockEl = document.getElementById('blocks-dock');
+            const scoreEl = document.getElementById('blocks-score');
+            const counterEl = document.getElementById('blocks-counter');
+
+            if (!gridEl || !dockEl) return;
+
+            scoreEl.innerText = `Score: ${blocksState.score}`;
+            counterEl.innerText = `Placed: ${blocksState.placedCount % 3}/3`;
+
+            // Render 8x8 Grid
+            let gridHtml = '';
+            for (let r = 0; r < 8; r++) {
+                for (let c = 0; c < 8; c++) {
+                    const filled = blocksState.grid[r][c] === 1;
+                    gridHtml += `
+                        <div onclick="placeBlockAt(${r}, ${c})" 
+                             onmouseenter="hoverBlockAt(${r}, ${c})" 
+                             class="w-full h-full rounded-md border border-slate-800 transition-colors duration-150 cursor-pointer ${filled ? 'bg-qBlue shadow-inner' : 'bg-slate-800 hover:bg-slate-700'}"
+                             id="cell-${r}-${c}">
+                        </div>
+                    `;
+                }
+            }
+            gridEl.innerHTML = gridHtml;
+
+            // Render Dock Shapes
+            dockEl.innerHTML = blocksState.dock.map((shape, idx) => {
+                if (!shape) {
+                    return `<div class="w-16 h-16 flex items-center justify-center text-slate-500 font-bold border-2 border-dashed border-slate-700 rounded-xl text-xs">Used</div>`;
+                }
+                const isSelected = blocksState.selectedShapeIndex === idx;
+                const rows = shape.length;
+                const cols = shape[0].length;
+
+                let shapeGrid = '';
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        const active = shape[r][c] === 1;
+                        shapeGrid += `<div class="w-3.5 h-3.5 rounded-sm ${active ? 'bg-qCyan' : 'bg-transparent'}"></div>`;
+                    }
+                }
+
+                return `
+                    <div onclick="selectDockShape(${idx})" 
+                         class="p-2.5 rounded-2xl border-2 ${isSelected ? 'border-qBlue bg-blue-50/10 scale-105' : 'border-slate-700 hover:border-slate-500'} cursor-pointer transition flex items-center justify-center shadow-md">
+                        <div class="grid gap-0.5" style="grid-template-columns: repeat(${cols}, minmax(0, 1fr));">
+                            ${shapeGrid}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            checkBlocksGameOver();
+        }
+
+        function selectDockShape(idx) {
+            if (!blocksState.dock[idx] || blocksState.modalOpen) return;
+            blocksState.selectedShapeIndex = blocksState.selectedShapeIndex === idx ? null : idx;
+            renderBlocksBoard();
+        }
+
+        function hoverBlockAt(r, c) {
+            // Optional subtle visual feedback on hover if shape is selected
+        }
+
+        function canPlaceShape(shape, startR, startC) {
+            const rows = shape.length;
+            const cols = shape[0].length;
+            if (startR + rows > 8 || startC + cols > 8) return false;
+
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    if (shape[r][c] === 1 && blocksState.grid[startR + r][startC + c] === 1) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        function placeBlockAt(r, c) {
+            if (blocksState.selectedShapeIndex === null || blocksState.modalOpen) return;
+            const shape = blocksState.dock[blocksState.selectedShapeIndex];
+            if (!shape) return;
+
+            if (!canPlaceShape(shape, r, c)) {
+                playSound('error');
+                return;
+            }
+
+            // Write shape onto grid
+            for (let sr = 0; sr < shape.length; sr++) {
+                for (let sc = 0; sc < shape[0].length; sc++) {
+                    if (shape[sr][sc] === 1) {
+                        blocksState.grid[r + sr][c + sc] = 1;
+                        blocksState.score += 10;
+                    }
+                }
+            }
+
+            playSound('flip');
+            blocksState.dock[blocksState.selectedShapeIndex] = null;
+            blocksState.selectedShapeIndex = null;
+            blocksState.placedCount++;
+
+            // Clear full lines/columns
+            clearGridLines();
+
+            // Check for Quiz Checkpoint every 3 placed tiles
+            if (blocksState.placedCount % 3 === 0) {
+                triggerBlocksQuizCheckpoint();
+            } else {
+                renderBlocksBoard();
+            }
+        }
+
+        function clearGridLines() {
+            let rowsToClear = [];
+            let colsToClear = [];
+
+            for (let r = 0; r < 8; r++) {
+                if (blocksState.grid[r].every(val => val === 1)) rowsToClear.push(r);
+            }
+
+            for (let c = 0; c < 8; c++) {
+                let full = true;
+                for (let r = 0; r < 8; r++) {
+                    if (blocksState.grid[r][c] !== 1) { full = false; break; }
+                }
+                if (full) colsToClear.push(c);
+            }
+
+            if (rowsToClear.length > 0 || colsToClear.length > 0) {
+                playSound('success');
+                rowsToClear.forEach(r => {
+                    for (let c = 0; c < 8; c++) blocksState.grid[r][c] = 0;
+                });
+                colsToClear.forEach(c => {
+                    for (let r = 0; r < 8; r++) blocksState.grid[r][c] = 0;
+                });
+                blocksState.score += (rowsToClear.length + colsToClear.length) * 100;
+            }
+        }
+
+        function triggerBlocksQuizCheckpoint() {
+            blocksState.modalOpen = true;
+            const terms = blocksState.set.terms;
+            const current = terms[Math.floor(Math.random() * terms.length)];
+            
+            const distractors = terms.filter(t => t.id !== current.id).sort(() => Math.random() - 0.5).slice(0, 3);
+            const options = [current, ...distractors].sort(() => Math.random() - 0.5);
+
+            const isSwap = blocksState.swapRoles;
+            const promptText = isSwap ? current.definition : current.term;
+
+            document.getElementById('blocks-q-type-label').innerText = isSwap ? "Select the matching Term:" : "Select the matching Definition:";
+            document.getElementById('blocks-q-prompt').innerText = promptText;
+
+            const optionsContainer = document.getElementById('blocks-q-options');
+            optionsContainer.innerHTML = options.map(opt => {
+                const optText = isSwap ? opt.term : opt.definition;
+                return `
+                    <button onclick="answerBlocksCheckpoint('${opt.id}', '${current.id}')" 
+                            class="w-full text-left p-3.5 rounded-xl border border-qBorderLight dark:border-qBorderDark hover:border-qBlue hover:bg-blue-50 dark:hover:bg-slate-800 text-xs sm:text-sm font-semibold transition">
+                        ${escapeHtml(optText)}
+                    </button>
+                `;
+            }).join('');
+
+            document.getElementById('blocks-challenge-modal').classList.remove('hidden');
+        }
+
+        function answerBlocksCheckpoint(selectedId, correctId) {
+            if (selectedId === correctId) {
+                playSound('success');
+                blocksState.modalOpen = false;
+                document.getElementById('blocks-challenge-modal').classList.add('hidden');
+                
+                // Unlock next batch of 3 dock shapes
+                replenishBlocksDock();
+                renderBlocksBoard();
+            } else {
+                playSound('error');
+                const btn = event.currentTarget;
+                btn.classList.add('border-red-500', 'bg-red-50', 'dark:bg-red-950/40', 'text-red-500');
+            }
+        }
+
+        function checkBlocksGameOver() {
+            if (blocksState.modalOpen) return;
+
+            const availableShapes = blocksState.dock.filter(s => s !== null);
+            if (availableShapes.length === 0) return;
+
+            let canPlaceAny = false;
+            for (let shape of availableShapes) {
+                for (let r = 0; r < 8; r++) {
+                    for (let c = 0; c < 8; c++) {
+                        if (canPlaceShape(shape, r, c)) {
+                            canPlaceAny = true;
+                            break;
+                        }
+                    }
+                    if (canPlaceAny) break;
+                }
+                if (canPlaceAny) break;
+            }
+
+            if (!canPlaceAny) {
+                showModal('Game Over', `No more valid moves remaining! Final Score: ${blocksState.score}`, () => {
+                    initBlocksEngine(blocksState.set.id);
+                });
+            }
+        }
+
+        let memoryState = { set: null, cards: [], selected: [], matched: [] };
+
+        function renderMemory(setId) {
+            return `
+                <div class="max-w-4xl mx-auto space-y-6 pb-16">
+                    <div class="flex justify-between items-center bg-white dark:bg-[#181632] px-6 py-4 rounded-2xl border border-qBorderLight dark:border-qBorderDark shadow-sm">
+                        <button onclick="window.router.navigate('study', {setId: '${setId}'})" class="text-xs font-bold text-qBlue uppercase tracking-wider hover:underline">&larr; Back</button>
+                        <h2 class="text-sm font-bold">Memory Grid</h2>
+                    </div>
+                    <div id="memory-board" class="grid grid-cols-2 sm:grid-cols-4 gap-4"></div>
+                </div>
+            `;
+        }
+
+        function initMemoryEngine(setId) {
+            const db = getDB();
+            const set = db.sets.find(s => s.id === setId);
+            if (!set || set.terms.length === 0) return;
+
+            memoryState.set = set;
+            memoryState.selected = [];
+            memoryState.matched = [];
+
+            const subset = [...set.terms].sort(() => Math.random() - 0.5).slice(0, 6);
+            let deck = [];
+            subset.forEach(t => {
+                deck.push({ id: t.id, text: t.term, uid: Math.random() });
+                deck.push({ id: t.id, text: t.definition, uid: Math.random() });
+            });
+            deck.sort(() => Math.random() - 0.5);
+            memoryState.cards = deck;
+
+            renderMemoryBoard();
+        }
+
+        function renderMemoryBoard() {
+            const board = document.getElementById('memory-board');
+            if (!board) return;
+
+            if (memoryState.matched.length === memoryState.cards.length && memoryState.cards.length > 0) {
+                playSound('success');
+                board.innerHTML = `
+                    <div class="col-span-full py-16 text-center bg-white dark:bg-[#181632] rounded-3xl border border-qBorderLight dark:border-qBorderDark space-y-4">
+                        <h2 class="text-2xl font-black">Memory Grid Cleared!</h2>
+                        <button onclick="initMemoryEngine('${memoryState.set.id}')" class="bg-qBlue text-white font-bold px-6 py-2.5 rounded-xl text-sm">Play Again</button>
+                    </div>
+                `;
+                return;
+            }
+
+            board.innerHTML = memoryState.cards.map((c, idx) => {
+                const isMatched = memoryState.matched.includes(c.uid);
+                const isSelected = memoryState.selected.includes(idx);
+                return `
+                    <div onclick="flipMemoryCard(${idx})" class="h-28 bg-white dark:bg-[#181632] border-2 ${isMatched ? 'opacity-20 pointer-events-none border-transparent' : isSelected ? 'border-qBlue bg-blue-50 dark:bg-slate-800' : 'border-qBorderLight dark:border-qBorderDark'} rounded-2xl p-4 flex items-center justify-center text-center cursor-pointer transition text-xs font-bold">
+                        ${isSelected || isMatched ? escapeHtml(c.text) : '❓'}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function flipMemoryCard(idx) {
+            if (memoryState.selected.length >= 2 || memoryState.selected.includes(idx)) return;
+            memoryState.selected.push(idx);
+            renderMemoryBoard();
+
+            if (memoryState.selected.length === 2) {
+                const c1 = memoryState.cards[memoryState.selected[0]];
+                const c2 = memoryState.cards[memoryState.selected[1]];
+                if (c1.id === c2.id && c1.uid !== c2.uid) {
+                    memoryState.matched.push(c1.uid, c2.uid);
+                    memoryState.selected = [];
+                    playSound('success');
+                    renderMemoryBoard();
+                } else {
+                    playSound('error');
+                    setTimeout(() => {
+                        memoryState.selected = [];
+                        renderMemoryBoard();
+                    }, 1000);
                 }
             }
         }
@@ -1280,10 +1753,6 @@
             dl.remove();
         }
 
-        function openImportModal() {
-            openAdvancedImportModal();
-        }
-
         function openAdvancedImportModal() {
             const html = `
                 <div class="space-y-4">
@@ -1292,13 +1761,13 @@
                         <button onclick="switchImportTab('file')" id="itab-file" class="flex-1 py-2 text-slate-400">JSON File</button>
                     </div>
                     <div id="import-pane-text" class="space-y-3">
-                        <p class="text-xs text-slate-500">Paste terms and definitions from Word, Excel, or Quizlet. Rows separated by newlines; terms and definitions separated by Tab, Comma, or Dash.</p>
+                        <p class="text-xs text-slate-500">Paste terms and definitions from Word, Excel, or Quizlet.</p>
                         <input type="text" id="import-set-title-input" placeholder="Set Title (Optional)" class="w-full bg-slate-100 dark:bg-slate-800 p-2.5 rounded-xl text-xs outline-none">
-                        <textarea id="import-raw-textarea" placeholder="Term 1 [Tab] Definition 1&#10;Term 2 [Tab] Definition 2" class="w-full h-32 bg-slate-100 dark:bg-slate-800 p-3 rounded-xl text-xs font-mono outline-none"></textarea>
+                        <textarea id="import-raw-textarea" placeholder="Term 1 \t Definition 1&#10;Term 2 \t Definition 2" class="w-full h-32 bg-slate-100 dark:bg-slate-800 p-3 rounded-xl text-xs font-mono outline-none"></textarea>
                         <div class="flex gap-2">
                             <select id="import-separator" class="bg-slate-100 dark:bg-slate-800 p-2 rounded-xl text-xs outline-none flex-1">
                                 <option value="auto">Auto-detect Separator</option>
-                                <option value="tab">Tab (\t)</option>
+                                <option value="tab">Tab (\\t)</option>
                                 <option value="comma">Comma (,)</option>
                                 <option value="dash">Dash (-)</option>
                             </select>
@@ -1306,8 +1775,8 @@
                         </div>
                     </div>
                     <div id="import-pane-file" class="space-y-3 hidden">
-                        <p class="text-xs text-slate-500">Upload a QuizIt or Quizlet exported JSON backup file.</p>
-                        <input type="file" id="import-file-input" accept=".json" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-qBlue hover:file:bg-blue-100">
+                        <p class="text-xs text-slate-500">Upload a QuizIt JSON backup file.</p>
+                        <input type="file" id="import-file-input" accept=".json" class="w-full text-xs text-slate-500">
                         <button onclick="processImportFile()" class="w-full bg-qBlue text-white font-bold py-2 rounded-xl text-sm">Upload & Import</button>
                     </div>
                 </div>
@@ -1344,17 +1813,13 @@
 
             const lines = rawText.split('\n');
             const terms = [];
-            lines.forEach((line, idx) => {
+            lines.forEach((line) => {
                 if (!line.trim()) return;
                 let parts = [];
-                if (sepMode === 'tab') {
-                    parts = line.split('\t');
-                } else if (sepMode === 'comma') {
-                    parts = line.split(',');
-                } else if (sepMode === 'dash') {
-                    parts = line.split(' - ');
-                } else {
-                    // Auto-detect
+                if (sepMode === 'tab') parts = line.split('\t');
+                else if (sepMode === 'comma') parts = line.split(',');
+                else if (sepMode === 'dash') parts = line.split(' - ');
+                else {
                     if (line.includes('\t')) parts = line.split('\t');
                     else if (line.includes(' - ')) parts = line.split(' - ');
                     else if (line.includes(',')) parts = line.split(',');
@@ -1373,7 +1838,7 @@
             });
 
             if (terms.length === 0) {
-                showModal('Error', 'Could not parse any valid term-definition pairs. Check your separator.');
+                showModal('Error', 'Could not parse any valid term-definition pairs.');
                 return;
             }
 
@@ -1419,9 +1884,11 @@
             reader.readAsText(file);
         }
 
-        function printStudyGuide(setId) {
-            window.print();
-        }
+        window.addEventListener('DOMContentLoaded', () => {
+            const settings = getSettings();
+            applyTheme(settings.darkMode);
+            window.router.navigate('dashboard');
+        });
     </script>
 </body>
 </html>
