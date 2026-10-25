@@ -1863,7 +1863,7 @@
                 const headers = { 'Accept': 'application/vnd.github+json' };
                 if (withAuth && auth && auth.token) headers['Authorization'] = 'Bearer ' + auth.token;
                 if (opts.body) headers['Content-Type'] = 'application/json';
-                return { method, headers, body: opts.body };
+                return { method, headers, body: opts.body, cache: 'no-store' };
             };
             let res;
             try {
@@ -1888,8 +1888,21 @@
             return res.json();
         }
 
-        async function ghReadGistFile(id, filename) {
-            const g = await ghFetch('/gists/' + encodeURIComponent(id));
+        async function ghReadGistFile(id, filename, ownerHint) {
+            let g;
+            try {
+                g = await ghFetch('/gists/' + encodeURIComponent(id));
+            } catch (e) {
+                // Rate-limited? Raw gist URLs are not counted against the API limit.
+                if ((e.status === 403 || e.status === 429) && ownerHint && /^[A-Za-z0-9-]{1,39}$/.test(ownerHint)) {
+                    let r = null;
+                    try {
+                        r = await fetch('https://gist.githubusercontent.com/' + ownerHint + '/' + encodeURIComponent(id) + '/raw/' + filename + '?cb=' + Date.now(), { cache: 'no-store' });
+                    } catch (e2) { r = null; }
+                    if (r && r.ok) return { text: await r.text(), owner: ownerHint };
+                }
+                throw e;
+            }
             const f = g.files && g.files[filename];
             if (!f) throw new Error('This link does not point to a QuizIt set.');
             let text = f.content;
@@ -2077,7 +2090,7 @@
         }
 
         async function importGistSet(gistId, hint = {}) {
-            const { text, owner } = await ghReadGistFile(gistId, GIST_FILE);
+            const { text, owner } = await ghReadGistFile(gistId, GIST_FILE, hint.owner);
             let parsed;
             try { parsed = JSON.parse(text); } catch (e) { throw new Error('This link does not point to a QuizIt set.'); }
             const raw = parsed && parsed.set ? parsed.set : parsed;
@@ -2119,6 +2132,7 @@
                 const res = await importGistSet(gistId, { owner: p.owner, alias: p.alias });
                 closeModal();
                 window.router.navigate('study', { setId: res.id });
+                return gistId;
             } catch (e) {
                 showModal('Could not open the set', e.message || 'Something went wrong.');
             }
@@ -2136,27 +2150,40 @@
             }
         }
 
-        // Quietly pull updates for sets you opened from links (once per visit)
-        async function syncLinkedSets() {
+        // Pull updates for every set you opened from a link: on each page load,
+        // and when you come back to the tab (at most once a minute).
+        let syncing = false, lastSyncAt = 0;
+        async function syncLinkedSets(excludeId) {
+            if (syncing) return;
+            syncing = true;
+            lastSyncAt = Date.now();
             try {
-                if (sessionStorage.getItem('quizit_synced')) return;
-                sessionStorage.setItem('quizit_synced', '1');
-            } catch (e) { return; }
-            const linked = getDB().sets.filter(s => String(s.id).startsWith('gist_') && s.gist && s.gist.id).slice(0, 5);
-            let changed = false;
-            for (const s of linked) {
-                try {
-                    const r = await importGistSet(s.gist.id, { owner: s.gist.owner, alias: s.gist.alias });
-                    if (r.changed) changed = true;
-                } catch (e) { /* offline or rate-limited: keep the local copy */ }
+                const linked = getDB().sets
+                    .filter(s => String(s.id).startsWith('gist_') && s.gist && s.gist.id && s.gist.id !== excludeId)
+                    .slice(0, 10);
+                if (!linked.length) return;
+                let updated = 0, failed = 0;
+                for (const s of linked) {
+                    try {
+                        const r = await importGistSet(s.gist.id, { owner: s.gist.owner, alias: s.gist.alias });
+                        if (r.changed) updated++;
+                    } catch (e) {
+                        if (e.status !== 404) failed++;   // 404 = the owner removed it; keep your copy quietly
+                    }
+                }
+                const v = window.router.currentView;
+                if (updated && (v === 'dashboard' || v === 'library' || v === 'study')) window.router.navigate(v, window.router.params);
+                if (updated) showToast('Updated ' + updated + ' shared set' + (updated > 1 ? 's' : '') + ' ✓');
+                else if (failed) showToast("Couldn't check your shared sets for updates right now.", true);
+            } finally {
+                syncing = false;
             }
-            const v = window.router.currentView;
-            if (changed && (v === 'dashboard' || v === 'library')) window.router.navigate(v, window.router.params);
         }
 
         function handleLinkHash() {
             const p = parseLinkToken(location.hash);
-            if (p) openLinkedSet(p);
+            if (p) openLinkedSet(p).then(id => syncLinkedSets(id));
+            else syncLinkedSets();
         }
 
         // ---- Share / publish screens ----
@@ -2654,8 +2681,9 @@
             const settings = getSettings();
             applyTheme(settings.darkMode);
             window.router.navigate('dashboard');
-            if (location.hash.length > 1) handleLinkHash(); else syncLinkedSets();
+            handleLinkHash();
             window.addEventListener('hashchange', handleLinkHash);
+            document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - lastSyncAt > 60000) syncLinkedSets(); });
         });
     </script>
 </body>
