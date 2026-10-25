@@ -64,6 +64,9 @@
             <button onclick="window.router.navigate('creator')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm hover:bg-slate-100 dark:hover:bg-slate-800 transition nav-btn text-qBlue" data-view="creator">
                 ➕ Create New Set
             </button>
+            <button onclick="window.router.navigate('account')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold text-sm hover:bg-slate-100 dark:hover:bg-slate-800 transition nav-btn" data-view="account">
+                👤 Account
+            </button>
         </nav>
 
         <div class="p-4 border-t border-qBorderLight dark:border-qBorderDark space-y-2">
@@ -75,7 +78,6 @@
                 <button onclick="openAdvancedImportModal()" class="flex-1 text-xs bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 font-semibold py-2 rounded-xl transition text-center">Import</button>
                 <button onclick="openShareCodeModal()" class="flex-1 text-xs bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 font-semibold py-2 rounded-xl transition text-center">Open Link/Code</button>
             </div>
-            <button onclick="openPublishSetup()" class="w-full text-xs bg-blue-50 dark:bg-blue-950/30 text-qBlue font-semibold py-2 rounded-xl transition text-center">☁️ Publishing setup</button>
             <button onclick="exportAllData()" class="w-full text-xs bg-red-50 dark:bg-red-950/30 text-red-500 font-semibold py-2 rounded-xl transition text-center">Backup All Data</button>
         </div>
     </aside>
@@ -274,6 +276,7 @@
                     case 'blast': app.innerHTML = renderBlast(params.setId); initBlastEngine(params.setId); break;
                     case 'blocks': app.innerHTML = renderBlocks(params.setId); initBlocksEngine(params.setId); break;
                     case 'memory': app.innerHTML = renderMemory(params.setId); initMemoryEngine(params.setId); break;
+                    case 'account': app.innerHTML = renderAccount(); break;
                     default: app.innerHTML = renderDashboard();
                 }
             }
@@ -308,7 +311,7 @@
                                             <span class="text-xs text-slate-400">📁 ${getFolderName(set.folderId)}</span>
                                         </div>
                                         <h3 class="text-lg font-bold group-hover:text-qBlue transition mb-1 line-clamp-1">${escapeHtml(set.title)}</h3>
-                                        <p class="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mb-4">${escapeHtml(set.description || 'No description.')}</p>
+                                        ${set.author ? `<p class="text-[11px] font-bold text-qBlue mb-1">by ${escapeHtml(set.author)}</p>` : ''}<p class="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mb-4">${escapeHtml(set.description || 'No description.')}</p>
                                     </div>
                                     <div class="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800 text-xs font-semibold text-qBlue">
                                         <span>Study Now</span>
@@ -362,7 +365,7 @@
                             </div>
                         </div>
                         <h3 onclick="window.router.navigate('study', {setId: '${set.id}'})" class="text-lg font-bold group-hover:text-qBlue cursor-pointer transition mb-1 line-clamp-1">${escapeHtml(set.title)}</h3>
-                        <p class="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mb-4">${escapeHtml(set.description || 'No description.')}</p>
+                        ${set.author ? `<p class="text-[11px] font-bold text-qBlue mb-1">by ${escapeHtml(set.author)}</p>` : ''}<p class="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mb-4">${escapeHtml(set.description || 'No description.')}</p>
                     </div>
                     <div class="flex gap-2">
                         <button onclick="window.router.navigate('study', {setId: '${set.id}'})" class="flex-1 bg-slate-100 dark:bg-slate-800 hover:bg-qBlue hover:text-white font-semibold py-2 rounded-xl text-xs transition text-center">Study</button>
@@ -693,6 +696,8 @@
                 description,
                 folderId,
                 createdAt: existingIndex >= 0 ? db.sets[existingIndex].createdAt : Date.now(),
+                ...(existingIndex >= 0 && db.sets[existingIndex].gist ? { gist: db.sets[existingIndex].gist } : {}),
+                ...(existingIndex >= 0 && db.sets[existingIndex].author ? { author: db.sets[existingIndex].author } : {}),
                 terms: validTerms.map(t => ({
                     id: t.id || 't_' + Math.random(),
                     term: t.term.trim(),
@@ -711,6 +716,7 @@
 
             saveDB(db);
             window.router.navigate('study', { setId });
+            autoPublishIfLinked(setId);
         }
 
         function renderStudyHub(setId) {
@@ -725,6 +731,7 @@
                             <button onclick="window.router.navigate('library')" class="text-xs font-bold text-qBlue uppercase tracking-wider hover:underline">&larr; Back to Library</button>
                             <h1 class="text-3xl font-black">${escapeHtml(set.title)}</h1>
                             <p class="text-sm text-slate-500 dark:text-slate-400">${escapeHtml(set.description || 'No description provided.')}</p>
+                            ${set.author ? `<p class="text-xs font-bold text-qBlue">by ${escapeHtml(set.author)}</p>` : ''}
                         </div>
                         <div class="flex gap-2">
                             <button onclick="window.router.navigate('creator', {setId: '${set.id}'})" class="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 font-bold px-4 py-2.5 rounded-xl text-xs transition">✏️ Edit</button>
@@ -1814,14 +1821,24 @@
                     starred: t.starred === true
                 };
             });
-            return {
+            const out = {
                 id: localId,
                 title: cleanStr(raw.title, 200) || 'Untitled',
                 description: cleanStr(raw.description, 1000),
+                author: cleanStr(raw.author, 60).trim(),
                 folderId: keepFolder ? safeId(raw.folderId, '') : '',
                 createdAt: Number(raw.createdAt) || Date.now(),
                 terms
             };
+            // Only a backup restore keeps the link to a published gist
+            if (keepFolder && raw.gist && typeof raw.gist === 'object' && /^[0-9a-f]{20,40}$/.test(String(raw.gist.id))) {
+                out.gist = {
+                    id: String(raw.gist.id),
+                    owner: safeId(raw.gist.owner, ''),
+                    alias: validAlias(String(raw.gist.alias || '')) ? String(raw.gist.alias) : ''
+                };
+            }
+            return out;
         }
         function sanitizeFolder(f) {
             return {
@@ -1858,7 +1875,7 @@
             }
             if (!res.ok) {
                 const messages = {
-                    401: 'GitHub did not accept your saved token. Reconnect it in Publishing setup.',
+                    401: 'GitHub did not accept your saved token. Reconnect it in the Account tab.',
                     403: 'GitHub refused the request. You may be rate-limited (wait a few minutes) or the token is missing the "gist" permission.',
                     404: 'Not found on GitHub. The link may be wrong, or the set was deleted.',
                     422: 'GitHub rejected the data (is the set too large?).',
@@ -1979,6 +1996,7 @@
                 set: {
                     title: set.title,
                     description: set.description || '',
+                    author: (getSettings().displayName || '').trim().slice(0, 60),
                     terms: set.terms.map(t => ({
                         id: t.id, term: t.term, definition: t.definition,
                         image: t.image || '', imageSide: t.imageSide || 'back'
@@ -2071,7 +2089,7 @@
             const localId = 'gist_' + gistId;
             const clean = sanitizeSet(raw, localId, false);
             clean.terms.forEach(t => { t.starred = false; });
-            const sig = s => JSON.stringify([s.title, s.description, (s.terms || []).map(t => [t.term, t.definition, t.image, t.imageSide])]);
+            const sig = s => JSON.stringify([s.title, s.description, s.author || '', (s.terms || []).map(t => [t.term, t.definition, t.image, t.imageSide])]);
             const idx = db.sets.findIndex(s => s.id === localId);
             let changed = true;
             let old = null;
@@ -2218,22 +2236,160 @@
         }
 
         function openPublishSetup() {
+            closeModal();
+            window.router.navigate('account');
+        }
+
+        function disconnectGithub() {
+            ghSetAuth(null);
+            window.router.navigate('account');
+        }
+
+        function setAutoPublish(on) {
+            const st = getSettings(); st.autoPublish = !!on; saveSettings(st);
+        }
+
+        function showToast(msg, isError) {
+            let t = document.getElementById('quizit-toast');
+            if (!t) {
+                t = document.createElement('div');
+                t.id = 'quizit-toast';
+                document.body.appendChild(t);
+            }
+            t.className = 'fixed bottom-4 right-4 z-[60] max-w-xs text-xs font-semibold px-4 py-3 rounded-xl shadow-lg ' + (isError ? 'bg-red-500 text-white' : 'bg-slate-800 text-white');
+            t.textContent = msg;
+            t.style.display = 'block';
+            clearTimeout(t._hide);
+            t._hide = setTimeout(() => { t.style.display = 'none'; }, isError ? 8000 : 2500);
+        }
+
+        function copyText(text) {
+            if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+            const ta = document.createElement('textarea');
+            ta.value = text; document.body.appendChild(ta); ta.select();
+            try { document.execCommand('copy'); } catch (e) {}
+            document.body.removeChild(ta);
+            return Promise.resolve();
+        }
+
+        function copyLink(setId) {
+            const s = getDB().sets.find(x => x.id === setId);
+            if (!s || !s.gist) return;
+            copyText(buildShareLink(s.gist.alias || s.gist.id, s.gist.owner)).then(
+                () => showToast('Link copied ✓'),
+                () => showToast('Could not copy automatically. Select the link and copy it.', true));
+        }
+
+        // One publish at a time per set, so quick consecutive saves land in order
+        const publishQueue = {};
+        function queuePublish(setId) {
+            const run = () => {
+                const s = getDB().sets.find(x => x.id === setId);
+                if (!s || !s.gist) return Promise.resolve();
+                return publishSetToGist(setId, s.gist.alias || '');
+            };
+            const p = (publishQueue[setId] || Promise.resolve()).catch(() => {}).then(run);
+            publishQueue[setId] = p;
+            return p;
+        }
+
+        function isMyPublished(s, auth) {
+            return !!(auth && s && s.gist && s.gist.owner && s.gist.owner.toLowerCase() === auth.login.toLowerCase());
+        }
+
+        // Called after every save: if this set is already published by you, update the same gist
+        async function autoPublishIfLinked(setId) {
+            const auth = ghGetAuth();
+            const set = getDB().sets.find(s => s.id === setId);
+            if (!isMyPublished(set, auth)) return;
+            if (getSettings().autoPublish === false) return;
+            showToast('Updating your shared link…');
+            try {
+                await queuePublish(setId);
+                showToast('Shared link updated ✓');
+            } catch (e) {
+                showToast('Saved here, but the shared copy was not updated: ' + (e.message || 'unknown error'), true);
+            }
+        }
+
+        async function saveDisplayName() {
+            const input = document.getElementById('acct-name');
+            const st = document.getElementById('acct-name-status');
+            const name = input.value.trim().slice(0, 60);
+            const settings = getSettings();
+            settings.displayName = name;
+            saveSettings(settings);
+            st.className = 'text-xs text-slate-500 mt-2';
+            st.textContent = 'Saved.';
+            const auth = ghGetAuth();
+            const mine = getDB().sets.filter(s => isMyPublished(s, auth));
+            if (!mine.length) return;
+            const n = mine.length;
+            st.textContent = 'Saved. Updating ' + n + ' shared set' + (n > 1 ? 's' : '') + '…';
+            let failed = 0;
+            for (const s of mine) {
+                try { await queuePublish(s.id); } catch (e) { failed++; }
+            }
+            if (failed) {
+                st.className = 'text-xs font-semibold text-red-500 mt-2';
+                st.textContent = 'Saved, but ' + failed + ' shared set' + (failed > 1 ? 's' : '') + ' could not be updated. Open Share on that set and press Update to retry.';
+            } else {
+                st.textContent = 'Saved. Your shared set' + (n > 1 ? 's' : '') + ' now show' + (n > 1 ? '' : 's') + ' this name.';
+            }
+        }
+
+        function renderAccount() {
+            const settings = getSettings();
             const auth = ghGetAuth();
             const note = shareNote; shareNote = '';
-            const noteHtml = note ? `<div class="bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 text-xs font-semibold p-2 rounded-xl">${escapeHtml(note)}</div>` : '';
-            if (!auth) {
-                showModal('Publishing setup', 'Connect GitHub once to publish sets as links that you can update later.', null, connectHtml(''));
-                return;
-            }
-            const html = `
-                <div class="space-y-3 text-xs text-slate-500 dark:text-slate-400">
+            const card = 'bg-white dark:bg-[#181632] p-6 rounded-3xl border border-qBorderLight dark:border-qBorderDark shadow-sm';
+            const noteHtml = note ? `<div class="bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 text-xs font-semibold p-3 rounded-xl">${escapeHtml(note)}</div>` : '';
+            const published = auth ? getDB().sets.filter(s => isMyPublished(s, auth)) : [];
+
+            const publishedHtml = published.length ? published.map(s => {
+                const link = buildShareLink(s.gist.alias || s.gist.id, s.gist.owner);
+                return `
+                    <div class="flex items-center justify-between gap-3 py-2 border-t border-qBorderLight dark:border-qBorderDark first:border-0">
+                        <div class="min-w-0">
+                            <div class="text-sm font-bold truncate">${escapeHtml(s.title)}</div>
+                            <div class="text-[11px] font-mono text-slate-400 truncate">${escapeHtml(link)}</div>
+                        </div>
+                        <button onclick="copyLink('${s.id}')" class="shrink-0 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 font-bold rounded-lg text-xs">Copy link</button>
+                    </div>`;
+            }).join('') : `<p class="text-xs text-slate-400">Nothing published yet. Open a set and press 🔗 Share.</p>`;
+
+            const githubHtml = auth ? `
+                <p class="text-sm">Connected as <b>${escapeHtml(auth.login)}</b>.</p>
+                <label class="flex items-start gap-2 text-sm cursor-pointer">
+                    <input type="checkbox" ${settings.autoPublish !== false ? 'checked' : ''} onchange="setAutoPublish(this.checked)" class="mt-1">
+                    <span><b>Update shared sets automatically when I save them.</b><br><span class="text-xs text-slate-400">Applies to sets you have already published. The link never changes.</span></span>
+                </label>
+                <button onclick="disconnectGithub()" class="text-xs text-red-500 font-bold hover:underline">Disconnect GitHub</button>
+                <p class="text-[11px] text-slate-400">Disconnecting does not delete anything you published. Links keep working, but you cannot update them until you reconnect.</p>`
+                : `<p class="text-xs text-slate-500">Connect GitHub once to publish sets as links you can keep updating.</p>${connectHtml('')}`;
+
+            return `
+                <div class="max-w-2xl mx-auto space-y-6 pb-16">
+                    <div class="${card}">
+                        <h1 class="text-2xl font-black">Account</h1>
+                        <p class="text-sm text-slate-500">Your name and sharing settings. Everything is stored in this browser.</p>
+                    </div>
                     ${noteHtml}
-                    <p>Connected as <b>${escapeHtml(auth.login)}</b>.</p>
-                    <p><b>How it works:</b> open a set, press 🔗 Share, then Publish. Send the link. After you edit the set, press Update and the same link shows the new version.</p>
-                    <button onclick="ghSetAuth(null); closeModal();" class="w-full bg-red-50 dark:bg-red-950/30 text-red-500 font-bold py-2 rounded-xl text-xs">Disconnect GitHub</button>
-                    <p class="text-[11px] text-slate-400">Disconnecting does not delete your published sets. Delete a gist on gist.github.com to take its link down.</p>
+                    <div class="${card}">
+                        <h2 class="text-lg font-black mb-1">Display name</h2>
+                        <p class="text-xs text-slate-400 mb-3">Shown as “by your name” on sets you share. Changing it updates the sets you have already shared.</p>
+                        <div class="flex gap-2">
+                            <input id="acct-name" maxlength="60" value="${escapeHtml(settings.displayName || '')}" placeholder="Your name" class="flex-1 min-w-0 bg-slate-100 dark:bg-slate-800 p-2.5 rounded-xl text-sm outline-none select-text">
+                            <button onclick="saveDisplayName()" class="px-4 bg-qBlue text-white font-bold rounded-xl text-sm">Save</button>
+                        </div>
+                        <p id="acct-name-status" class="text-xs text-slate-500 mt-2"></p>
+                    </div>
+                    <div class="${card} space-y-3">
+                        <h2 class="text-lg font-black">GitHub sharing</h2>
+                        ${githubHtml}
+                    </div>
+                    ${auth ? `<div class="${card}"><h2 class="text-lg font-black mb-2">Published sets</h2>${publishedHtml}</div>` : ''}
                 </div>`;
-            showModal('Publishing setup', 'Your GitHub account is connected.', null, html);
         }
 
         async function doPublish(setId) {
@@ -2293,7 +2449,7 @@
                     </div>
                     <button id="pub-btn" onclick="doPublish('${set.id}')" class="w-full bg-qBlue text-white font-bold py-2.5 rounded-xl text-sm">${g ? 'Update published set' : 'Publish set'}</button>
                     <p id="pub-status" class="text-xs text-slate-500">${g ? 'Press Update after you edit the set. The link stays the same.' : ''}</p>
-                    <div class="text-[11px] text-slate-400">Signed in as ${escapeHtml(auth.login)} · <button onclick="openPublishSetup()" class="underline">Publishing setup</button> · <button onclick="legacyShareCode('${set.id}')" class="underline">Offline code</button></div>
+                    <div class="text-[11px] text-slate-400">Signed in as ${escapeHtml(auth.login)} · <button onclick="openPublishSetup()" class="underline">Account</button> · <button onclick="legacyShareCode('${set.id}')" class="underline">Offline code</button></div>
                 </div>`;
             showModal(g ? 'Share this set' : 'Publish this set', g ? 'Anyone with the link can open this set.' : 'Creates a link anyone can open. You can update it later and the link stays the same.', null, html);
         }
@@ -2324,7 +2480,7 @@
             try {
                 const set = JSON.parse(decodeURIComponent(atob(input)));
                 if (!set || !set.title || !Array.isArray(set.terms)) throw new Error();
-                const clean = sanitizeSet(set, safeId(set.id, 'set_' + Date.now()), true);
+                const clean = sanitizeSet(set, safeId(set.id, 'set_' + Date.now()), false);
                 const db = getDB();
                 if (!db.sets.some(s => s.id === clean.id)) {
                     db.sets.push(clean);
