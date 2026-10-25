@@ -73,8 +73,9 @@
             </div>
             <div class="flex gap-2">
                 <button onclick="openAdvancedImportModal()" class="flex-1 text-xs bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 font-semibold py-2 rounded-xl transition text-center">Import</button>
-                <button onclick="openShareCodeModal()" class="flex-1 text-xs bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 font-semibold py-2 rounded-xl transition text-center">Share Code</button>
+                <button onclick="openShareCodeModal()" class="flex-1 text-xs bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 font-semibold py-2 rounded-xl transition text-center">Open Link/Code</button>
             </div>
+            <button onclick="openPublishSetup()" class="w-full text-xs bg-blue-50 dark:bg-blue-950/30 text-qBlue font-semibold py-2 rounded-xl transition text-center">☁️ Publishing setup</button>
             <button onclick="exportAllData()" class="w-full text-xs bg-red-50 dark:bg-red-950/30 text-red-500 font-semibold py-2 rounded-xl transition text-center">Backup All Data</button>
         </div>
     </aside>
@@ -356,7 +357,7 @@
                             <span class="text-xs font-bold uppercase tracking-wider bg-blue-50 dark:bg-blue-950/40 text-qBlue px-2.5 py-1 rounded-md">${set.terms.length} terms</span>
                             <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
                                 <button onclick="window.router.navigate('creator', {setId: '${set.id}'})" class="p-1 hover:text-qBlue">✏️</button>
-                                <button onclick="shareSetCode('${set.id}')" class="p-1 hover:text-qBlue" title="Share Code">🔗</button>
+                                <button onclick="shareSetCode('${set.id}')" class="p-1 hover:text-qBlue" title="Share link">🔗</button>
                                 <button onclick="deleteSet('${set.id}')" class="p-1 hover:text-red-500">🗑️</button>
                             </div>
                         </div>
@@ -728,6 +729,7 @@
                         <div class="flex gap-2">
                             <button onclick="window.router.navigate('creator', {setId: '${set.id}'})" class="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 font-bold px-4 py-2.5 rounded-xl text-xs transition">✏️ Edit</button>
                             <button onclick="shareSetCode('${set.id}')" class="bg-qBlue text-white font-bold px-4 py-2.5 rounded-xl text-xs transition shadow-sm">🔗 Share</button>
+                            ${String(set.id).startsWith('gist_') ? `<button onclick="refreshLinkedSet('${set.id}')" class="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 font-bold px-4 py-2.5 rounded-xl text-xs transition">↻ Update</button>` : ''}
                         </div>
                     </div>
 
@@ -1773,38 +1775,566 @@
             }
         }
 
+        // ==================================================================
+        // Sharing: publish sets to GitHub Gists (links that stay the same)
+        // ==================================================================
+        const GH_KEY = 'quizit_github_v1';
+        const GH_API = 'https://api.github.com';
+        const GIST_FILE = 'quizit-set.json';
+        const REGISTRY_FILE = 'quizit-index.json';
+        let shareNote = '';
+
+        // ---- Safety: anything that arrives from a link/code/file is cleaned first ----
+        function safeId(v, fallback) {
+            return String(v == null ? '' : v).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 60) || fallback;
+        }
+        function cleanStr(v, max) { return (typeof v === 'string' ? v : '').slice(0, max); }
+        function cleanImage(v) {
+            if (typeof v !== 'string') return '';
+            if (/^data:image\/(png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+\/=]+$/.test(v)) return v;
+            if (v.length < 2000 && /^https:\/\/[^\s"'<>`\\]+$/.test(v)) return v;
+            return '';
+        }
+        function sanitizeSet(raw, localId, keepFolder) {
+            if (!raw || typeof raw.title !== 'string' || !Array.isArray(raw.terms)) {
+                throw new Error('This does not look like a QuizIt set.');
+            }
+            const seen = new Set();
+            const terms = raw.terms.slice(0, 2000).map((t, i) => {
+                t = t || {};
+                let id = safeId(t.id, 't' + i);
+                while (seen.has(id)) id += 'x';
+                seen.add(id);
+                return {
+                    id,
+                    term: cleanStr(t.term, 2000),
+                    definition: cleanStr(t.definition, 4000),
+                    image: cleanImage(t.image),
+                    imageSide: t.imageSide === 'front' ? 'front' : 'back',
+                    starred: t.starred === true
+                };
+            });
+            return {
+                id: localId,
+                title: cleanStr(raw.title, 200) || 'Untitled',
+                description: cleanStr(raw.description, 1000),
+                folderId: keepFolder ? safeId(raw.folderId, '') : '',
+                createdAt: Number(raw.createdAt) || Date.now(),
+                terms
+            };
+        }
+        function sanitizeFolder(f) {
+            return {
+                id: safeId(f && f.id, 'folder_' + Math.random().toString(36).slice(2, 8)),
+                title: cleanStr(f && f.title, 100) || 'Folder'
+            };
+        }
+
+        // ---- GitHub plumbing ----
+        function ghGetAuth() {
+            try { return JSON.parse(localStorage.getItem(GH_KEY)) || null; } catch (e) { return null; }
+        }
+        function ghSetAuth(a) {
+            if (a) localStorage.setItem(GH_KEY, JSON.stringify(a)); else localStorage.removeItem(GH_KEY);
+        }
+
+        async function ghFetch(path, opts = {}) {
+            const url = path.startsWith('http') ? path : GH_API + path;
+            const method = (opts.method || 'GET').toUpperCase();
+            const auth = ghGetAuth();
+            const build = (withAuth) => {
+                const headers = { 'Accept': 'application/vnd.github+json' };
+                if (withAuth && auth && auth.token) headers['Authorization'] = 'Bearer ' + auth.token;
+                if (opts.body) headers['Content-Type'] = 'application/json';
+                return { method, headers, body: opts.body };
+            };
+            let res;
+            try {
+                res = await fetch(url, build(true));
+                // A stale/revoked token must not stop people from reading public links
+                if (res.status === 401 && method === 'GET' && auth) res = await fetch(url, build(false));
+            } catch (e) {
+                throw new Error('Could not reach GitHub. Check your internet connection.');
+            }
+            if (!res.ok) {
+                const messages = {
+                    401: 'GitHub did not accept your saved token. Reconnect it in Publishing setup.',
+                    403: 'GitHub refused the request. You may be rate-limited (wait a few minutes) or the token is missing the "gist" permission.',
+                    404: 'Not found on GitHub. The link may be wrong, or the set was deleted.',
+                    422: 'GitHub rejected the data (is the set too large?).',
+                    429: 'GitHub is rate-limiting requests. Try again in a few minutes.'
+                };
+                const err = new Error(messages[res.status] || ('GitHub error ' + res.status));
+                err.status = res.status;
+                throw err;
+            }
+            return res.json();
+        }
+
+        async function ghReadGistFile(id, filename) {
+            const g = await ghFetch('/gists/' + encodeURIComponent(id));
+            const f = g.files && g.files[filename];
+            if (!f) throw new Error('This link does not point to a QuizIt set.');
+            let text = f.content;
+            if (f.truncated || typeof text !== 'string') {
+                let r;
+                try { r = await fetch(f.raw_url); } catch (e) { throw new Error('Could not download the set.'); }
+                if (!r.ok) throw new Error('Could not download the set.');
+                text = await r.text();
+            }
+            return { text, owner: g.owner && g.owner.login };
+        }
+
+        // ---- Short codes: a small public "index" gist maps code -> set gist ----
+        function normAlias(s) { return String(s || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, ''); }
+        function validAlias(a) { return /^[a-z0-9][a-z0-9-]{1,23}$/.test(a) && !/^[0-9a-f]{20,}$/.test(a); }
+        function own(o, k) { return !!o && Object.prototype.hasOwnProperty.call(o, k); }
+
+        async function ghFindRegistry(owner) {
+            const cacheKey = 'quizit_reg_' + owner.toLowerCase();
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) return cached;
+            for (let page = 1; page <= 3; page++) {
+                const list = await ghFetch('/users/' + encodeURIComponent(owner) + '/gists?per_page=100&page=' + page);
+                const hit = list.find(g => g.files && g.files[REGISTRY_FILE]);
+                if (hit) { localStorage.setItem(cacheKey, hit.id); return hit.id; }
+                if (list.length < 100) break;
+            }
+            return null;
+        }
+
+        async function ghResolveAlias(owner, code) {
+            for (let attempt = 0; attempt < 2; attempt++) {
+                const regId = await ghFindRegistry(owner);
+                if (!regId) throw new Error('No short codes were found for "' + owner + '".');
+                try {
+                    const { text } = await ghReadGistFile(regId, REGISTRY_FILE);
+                    const reg = JSON.parse(text);
+                    const id = own(reg.aliases, code) ? reg.aliases[code] : null;
+                    if (!id || !/^[0-9a-f]{20,40}$/i.test(id)) throw new Error('The short code "' + code + '" was not found.');
+                    return String(id).toLowerCase();
+                } catch (e) {
+                    if (e.status === 404 && attempt === 0) { localStorage.removeItem('quizit_reg_' + owner.toLowerCase()); continue; }
+                    throw e;
+                }
+            }
+        }
+
+        async function ghUpdateRegistry(gistId, newAlias) {
+            const auth = ghGetAuth();
+            const cacheKey = 'quizit_reg_' + auth.login.toLowerCase();
+            for (let attempt = 0; attempt < 2; attempt++) {
+                let regId = await ghFindRegistry(auth.login);
+                if (!regId) {
+                    const g = await ghFetch('/gists', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            description: 'QuizIt short codes (please do not delete)',
+                            public: true,
+                            files: { [REGISTRY_FILE]: { content: JSON.stringify({ aliases: {} }) } }
+                        })
+                    });
+                    regId = g.id;
+                    localStorage.setItem(cacheKey, regId);
+                }
+                try {
+                    const { text } = await ghReadGistFile(regId, REGISTRY_FILE);
+                    let reg; try { reg = JSON.parse(text); } catch (e) { reg = {}; }
+                    const aliases = (reg && typeof reg.aliases === 'object' && reg.aliases) ? reg.aliases : {};
+                    if (newAlias && own(aliases, newAlias) && aliases[newAlias] !== gistId) {
+                        throw new Error('The short code "' + newAlias + '" is already used by another set. Pick a different one.');
+                    }
+                    Object.keys(aliases).forEach(k => { if (aliases[k] === gistId) delete aliases[k]; });
+                    if (newAlias) aliases[newAlias] = gistId;
+                    await ghFetch('/gists/' + regId, {
+                        method: 'PATCH',
+                        body: JSON.stringify({ files: { [REGISTRY_FILE]: { content: JSON.stringify({ aliases }, null, 1) } } })
+                    });
+                    return;
+                } catch (e) {
+                    if (e.status === 404 && attempt === 0) { localStorage.removeItem(cacheKey); continue; }
+                    throw e;
+                }
+            }
+        }
+
+        // ---- Publishing ----
+        function saveSetGistPointer(setId, gist) {
+            const db = getDB();
+            const s = db.sets.find(x => x.id === setId);
+            if (s) { s.gist = gist; saveDB(db); }
+        }
+
+        async function publishSetToGist(setId, aliasInput) {
+            const auth = ghGetAuth();
+            if (!auth || !auth.token) throw new Error('Connect your GitHub account first.');
+            const set = getDB().sets.find(s => s.id === setId);
+            if (!set) throw new Error('Set not found.');
+            const alias = normAlias(aliasInput);
+            if (alias && !validAlias(alias)) throw new Error('Short codes need 2–24 letters, numbers or dashes.');
+
+            const payload = {
+                quizit: 1,
+                publishedAt: new Date().toISOString(),
+                set: {
+                    title: set.title,
+                    description: set.description || '',
+                    terms: set.terms.map(t => ({
+                        id: t.id, term: t.term, definition: t.definition,
+                        image: t.image || '', imageSide: t.imageSide || 'back'
+                    }))
+                }
+            };
+            const content = JSON.stringify(payload);
+            if (content.length > 8000000) throw new Error('This set is too large to publish (uploaded images?). Use image URLs instead of uploads.');
+
+            let gistId = set.gist && set.gist.id;
+            if (gistId) {
+                try {
+                    await ghFetch('/gists/' + gistId, {
+                        method: 'PATCH',
+                        body: JSON.stringify({ description: 'QuizIt: ' + set.title, files: { [GIST_FILE]: { content } } })
+                    });
+                } catch (e) {
+                    if (e.status === 404) throw new Error('The published copy no longer exists on GitHub (deleted, or it belongs to another account).');
+                    throw e;
+                }
+            } else {
+                const g = await ghFetch('/gists', {
+                    method: 'POST',
+                    body: JSON.stringify({ description: 'QuizIt: ' + set.title, public: false, files: { [GIST_FILE]: { content } } })
+                });
+                gistId = g.id;
+            }
+            const oldAlias = (set.gist && set.gist.alias) || '';
+            let pointer = { id: gistId, owner: auth.login, alias: oldAlias };
+            saveSetGistPointer(setId, pointer);   // saved first, so a failed short code never loses the link
+            if (alias !== oldAlias) {
+                await ghUpdateRegistry(gistId, alias);
+                pointer = { id: gistId, owner: auth.login, alias };
+                saveSetGistPointer(setId, pointer);
+            }
+            return pointer;
+        }
+
+        // ---- Opening links ----
+        function hostOwner() {
+            const h = location.hostname.toLowerCase();
+            if (h.endsWith('.github.io')) return h.split('.')[0];
+            const a = ghGetAuth();
+            return a ? a.login : null;
+        }
+
+        // Accepts: full link, "#code", "code", "user/code", or a 32-character gist id
+        function parseLinkToken(input) {
+            let s = String(input || '').trim();
+            let owner = null;
+            if (/^https?:\/\//i.test(s)) {
+                try {
+                    const u = new URL(s);
+                    const h = u.hostname.toLowerCase();
+                    if (h.endsWith('.github.io')) owner = h.split('.')[0];
+                    s = u.hash;
+                } catch (e) { return null; }
+            }
+            const i = s.indexOf('#');
+            if (i >= 0) s = s.slice(i + 1);
+            try { s = decodeURIComponent(s); } catch (e) { return null; }
+            s = s.replace(/^\/+/, '').trim();
+            let code = s;
+            if (s.includes('/')) {
+                const parts = s.split('/');
+                if (parts.length !== 2) return null;
+                owner = parts[0]; code = parts[1];
+            }
+            code = code.trim().toLowerCase();
+            if (owner && !/^[A-Za-z0-9-]{1,39}$/.test(owner)) return null;
+            if (/^[0-9a-f]{20,40}$/.test(code)) return { owner, gistId: code };
+            if (validAlias(code)) {
+                owner = owner || hostOwner();
+                if (!owner) return null;
+                return { owner, alias: code };
+            }
+            return null;
+        }
+
+        async function importGistSet(gistId, hint = {}) {
+            const { text, owner } = await ghReadGistFile(gistId, GIST_FILE);
+            let parsed;
+            try { parsed = JSON.parse(text); } catch (e) { throw new Error('This link does not point to a QuizIt set.'); }
+            const raw = parsed && parsed.set ? parsed.set : parsed;
+            const db = getDB();
+            // The owner opening their own link just goes to their own (editable) copy
+            const mine = db.sets.find(s => s.gist && s.gist.id === gistId && !String(s.id).startsWith('gist_'));
+            if (mine) return { id: mine.id, changed: false };
+
+            const localId = 'gist_' + gistId;
+            const clean = sanitizeSet(raw, localId, false);
+            clean.terms.forEach(t => { t.starred = false; });
+            const sig = s => JSON.stringify([s.title, s.description, (s.terms || []).map(t => [t.term, t.definition, t.image, t.imageSide])]);
+            const idx = db.sets.findIndex(s => s.id === localId);
+            let changed = true;
+            let old = null;
+            if (idx >= 0) {
+                old = db.sets[idx];
+                const starred = new Set((old.terms || []).filter(t => t.starred).map(t => t.id));
+                clean.terms.forEach(t => { t.starred = starred.has(t.id); });
+                clean.folderId = old.folderId || '';
+                clean.createdAt = old.createdAt || clean.createdAt;
+                changed = sig(old) !== sig(clean);
+            }
+            clean.gist = {
+                id: gistId,
+                owner: owner || hint.owner || '',
+                alias: hint.alias || (old && old.gist && old.gist.alias) || '',
+                syncedAt: Date.now()
+            };
+            if (idx >= 0) db.sets[idx] = clean; else db.sets.push(clean);
+            saveDB(db);
+            return { id: localId, changed };
+        }
+
+        async function openLinkedSet(p) {
+            showModal('Opening set…', 'Fetching the latest version from GitHub.');
+            try {
+                const gistId = p.gistId || await ghResolveAlias(p.owner, p.alias);
+                const res = await importGistSet(gistId, { owner: p.owner, alias: p.alias });
+                closeModal();
+                window.router.navigate('study', { setId: res.id });
+            } catch (e) {
+                showModal('Could not open the set', e.message || 'Something went wrong.');
+            }
+        }
+
+        async function refreshLinkedSet(setId) {
+            const set = getDB().sets.find(s => s.id === setId);
+            if (!set || !set.gist) return;
+            try {
+                const res = await importGistSet(set.gist.id, { owner: set.gist.owner, alias: set.gist.alias });
+                window.router.navigate('study', { setId: res.id });
+                showModal(res.changed ? 'Updated' : 'Up to date', res.changed ? 'You now have the latest version of this set.' : 'You already have the latest version.');
+            } catch (e) {
+                showModal('Could not update', e.message || 'Something went wrong.');
+            }
+        }
+
+        // Quietly pull updates for sets you opened from links (once per visit)
+        async function syncLinkedSets() {
+            try {
+                if (sessionStorage.getItem('quizit_synced')) return;
+                sessionStorage.setItem('quizit_synced', '1');
+            } catch (e) { return; }
+            const linked = getDB().sets.filter(s => String(s.id).startsWith('gist_') && s.gist && s.gist.id).slice(0, 5);
+            let changed = false;
+            for (const s of linked) {
+                try {
+                    const r = await importGistSet(s.gist.id, { owner: s.gist.owner, alias: s.gist.alias });
+                    if (r.changed) changed = true;
+                } catch (e) { /* offline or rate-limited: keep the local copy */ }
+            }
+            const v = window.router.currentView;
+            if (changed && (v === 'dashboard' || v === 'library')) window.router.navigate(v, window.router.params);
+        }
+
+        function handleLinkHash() {
+            const p = parseLinkToken(location.hash);
+            if (p) openLinkedSet(p);
+        }
+
+        // ---- Share / publish screens ----
+        function buildShareLink(code, owner) {
+            const base = location.href.split('#')[0];
+            const isId = /^[0-9a-f]{20,40}$/.test(code);
+            const host = location.hostname.toLowerCase();
+            const hostOwned = host.endsWith('.github.io') && owner && host.split('.')[0] === owner.toLowerCase();
+            const prefix = (isId || hostOwned || !owner) ? '' : owner + '/';
+            return base + '#' + prefix + code;
+        }
+
+        function copyField(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.focus(); el.select();
+            const done = () => {
+                const b = document.getElementById(id + '-btn');
+                if (b) { b.textContent = 'Copied ✓'; setTimeout(() => { b.textContent = 'Copy'; }, 1500); }
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(el.value).then(done, () => { try { document.execCommand('copy'); } catch (e) {} done(); });
+            } else {
+                try { document.execCommand('copy'); } catch (e) {}
+                done();
+            }
+        }
+
+        function linkBoxHtml(link, label) {
+            return `
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 mb-1">${label}</label>
+                    <div class="flex gap-2">
+                        <input id="share-link" readonly value="${escapeHtml(link)}" onclick="this.select()" class="flex-1 min-w-0 bg-slate-100 dark:bg-slate-800 p-2.5 rounded-xl text-xs font-mono outline-none select-text">
+                        <button id="share-link-btn" onclick="copyField('share-link')" class="px-3 bg-qBlue text-white font-bold rounded-xl text-xs">Copy</button>
+                    </div>
+                </div>`;
+        }
+
+        function connectHtml(setId) {
+            return `
+                <div class="space-y-3">
+                    <ol class="list-decimal pl-5 space-y-1.5 text-xs text-slate-500 dark:text-slate-400">
+                        <li>Click <a href="https://github.com/settings/tokens/new?scopes=gist&description=QuizIt" target="_blank" rel="noopener" class="text-qBlue font-bold underline">Create token on GitHub</a> and sign in if asked.</li>
+                        <li>Leave <b>gist</b> ticked, choose how long it lasts, scroll down and press <b>Generate token</b>.</li>
+                        <li>Copy the token (it starts with <code>ghp_</code>) and paste it below.</li>
+                    </ol>
+                    <input id="gh-token" type="password" autocomplete="off" placeholder="Paste token here" class="w-full bg-slate-100 dark:bg-slate-800 p-2.5 rounded-xl text-xs font-mono outline-none select-text">
+                    <button onclick="doConnect('${setId}')" class="w-full bg-qBlue text-white font-bold py-2.5 rounded-xl text-sm">Connect</button>
+                    <p id="gh-status" class="text-xs text-slate-500"></p>
+                    <p class="text-[11px] text-slate-400">The token is stored only in this browser and can only work with your gists. You can revoke it any time at github.com/settings/tokens.</p>
+                </div>`;
+        }
+
+        async function doConnect(setId) {
+            const st = document.getElementById('gh-status');
+            const token = document.getElementById('gh-token').value.trim();
+            if (!token) { st.textContent = 'Paste your token first.'; return; }
+            st.className = 'text-xs text-slate-500';
+            st.textContent = 'Checking…';
+            try {
+                let res;
+                try {
+                    res = await fetch(GH_API + '/user', { headers: { 'Accept': 'application/vnd.github+json', 'Authorization': 'Bearer ' + token } });
+                } catch (e) { throw new Error('Could not reach GitHub. Check your internet connection.'); }
+                if (!res.ok) throw new Error('GitHub did not accept that token. Make sure you copied all of it.');
+                const scopes = res.headers.get('X-OAuth-Scopes');
+                if (scopes !== null && !/\bgist\b/.test(scopes)) throw new Error('That token is missing the "gist" permission. Create a new one with the button above.');
+                const u = await res.json();
+                ghSetAuth({ token, login: u.login });
+                shareNote = 'Connected as ' + u.login + '.';
+                if (setId) shareSetCode(setId); else openPublishSetup();
+            } catch (e) {
+                st.className = 'text-xs font-semibold text-red-500';
+                st.textContent = e.message || 'Something went wrong.';
+            }
+        }
+
+        function openPublishSetup() {
+            const auth = ghGetAuth();
+            const note = shareNote; shareNote = '';
+            const noteHtml = note ? `<div class="bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 text-xs font-semibold p-2 rounded-xl">${escapeHtml(note)}</div>` : '';
+            if (!auth) {
+                showModal('Publishing setup', 'Connect GitHub once to publish sets as links that you can update later.', null, connectHtml(''));
+                return;
+            }
+            const html = `
+                <div class="space-y-3 text-xs text-slate-500 dark:text-slate-400">
+                    ${noteHtml}
+                    <p>Connected as <b>${escapeHtml(auth.login)}</b>.</p>
+                    <p><b>How it works:</b> open a set, press 🔗 Share, then Publish. Send the link. After you edit the set, press Update and the same link shows the new version.</p>
+                    <button onclick="ghSetAuth(null); closeModal();" class="w-full bg-red-50 dark:bg-red-950/30 text-red-500 font-bold py-2 rounded-xl text-xs">Disconnect GitHub</button>
+                    <p class="text-[11px] text-slate-400">Disconnecting does not delete your published sets. Delete a gist on gist.github.com to take its link down.</p>
+                </div>`;
+            showModal('Publishing setup', 'Your GitHub account is connected.', null, html);
+        }
+
+        async function doPublish(setId) {
+            const btn = document.getElementById('pub-btn');
+            const st = document.getElementById('pub-status');
+            const alias = document.getElementById('pub-alias').value;
+            btn.disabled = true; btn.classList.add('opacity-50');
+            st.className = 'text-xs text-slate-500';
+            st.textContent = 'Publishing…';
+            try {
+                const was = !!(getDB().sets.find(s => s.id === setId) || {}).gist;
+                await publishSetToGist(setId, alias);
+                shareNote = was ? 'Updated! The same link now shows your latest changes.' : 'Published! Copy the link below and send it.';
+                shareSetCode(setId);
+            } catch (e) {
+                st.className = 'text-xs font-semibold text-red-500';
+                st.textContent = e.message || 'Something went wrong.';
+                btn.disabled = false; btn.classList.remove('opacity-50');
+            }
+        }
+
         function shareSetCode(setId) {
+            const set = getDB().sets.find(s => s.id === setId);
+            if (!set) return;
+            const auth = ghGetAuth();
+            const g = set.gist || null;
+            const mine = !!(auth && (!g || (g.owner && g.owner.toLowerCase() === auth.login.toLowerCase())));
+            const note = shareNote; shareNote = '';
+            const noteHtml = note ? `<div class="bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 text-xs font-semibold p-2 rounded-xl">${escapeHtml(note)}</div>` : '';
+
+            // A set someone else published to you: show its link + update button
+            if (g && !mine) {
+                const link = buildShareLink(g.alias || g.id, g.alias ? g.owner : null);
+                const html = `<div class="space-y-3">${linkBoxHtml(link, 'Link to this set')}
+                    <button onclick="closeModal(); refreshLinkedSet('${set.id}')" class="w-full bg-qBlue text-white font-bold py-2.5 rounded-xl text-sm">↻ Check for updates</button></div>`;
+                showModal('Shared set', 'Published by ' + (g.owner || 'someone else') + '. Opening the link again pulls their latest changes.', null, html);
+                return;
+            }
+
+            if (!auth) {
+                showModal('Publish this set', 'Get a link anyone can open. When you edit the set later, the same link shows the new version. One-time setup:', null,
+                    connectHtml(set.id) + `<button onclick="legacyShareCode('${set.id}')" class="w-full text-[11px] text-slate-400 hover:text-qBlue underline pt-3">Skip, give me an offline code instead</button>`);
+                return;
+            }
+
+            const link = g ? buildShareLink(g.alias || g.id, g.owner || auth.login) : '';
+            const localWarn = location.protocol === 'file:'
+                ? `<div class="bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 text-xs p-2 rounded-xl">You are running a local copy. The link only works once this file is uploaded to your GitHub Pages site, so open the app from its GitHub Pages address and share from there.</div>` : '';
+            const html = `
+                <div class="space-y-3">
+                    ${noteHtml}${localWarn}
+                    ${g ? linkBoxHtml(link, 'Your link') : ''}
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 mb-1">Short code (optional)</label>
+                        <input id="pub-alias" maxlength="24" value="${escapeHtml((g && g.alias) || '')}" placeholder="e.g. bio101" class="w-full bg-slate-100 dark:bg-slate-800 p-2.5 rounded-xl text-xs outline-none select-text">
+                        <p class="text-[11px] text-slate-400 mt-1">2–24 letters, numbers or dashes. Makes the link much shorter.</p>
+                    </div>
+                    <button id="pub-btn" onclick="doPublish('${set.id}')" class="w-full bg-qBlue text-white font-bold py-2.5 rounded-xl text-sm">${g ? 'Update published set' : 'Publish set'}</button>
+                    <p id="pub-status" class="text-xs text-slate-500">${g ? 'Press Update after you edit the set. The link stays the same.' : ''}</p>
+                    <div class="text-[11px] text-slate-400">Signed in as ${escapeHtml(auth.login)} · <button onclick="openPublishSetup()" class="underline">Publishing setup</button> · <button onclick="legacyShareCode('${set.id}')" class="underline">Offline code</button></div>
+                </div>`;
+            showModal(g ? 'Share this set' : 'Publish this set', g ? 'Anyone with the link can open this set.' : 'Creates a link anyone can open. You can update it later and the link stays the same.', null, html);
+        }
+
+        // Old-style offline code (long text, no GitHub needed)
+        function legacyShareCode(setId) {
             const db = getDB();
             const set = db.sets.find(s => s.id === setId);
             if (!set) return;
             const code = btoa(encodeURIComponent(JSON.stringify(set)));
             const html = `<textarea readonly class="w-full h-28 bg-slate-100 dark:bg-slate-800 p-3 rounded-xl text-xs font-mono select-all">${code}</textarea>`;
-            showModal('Share Code', 'Copy this share code to send to friends or import instantly.', null, html);
+            showModal('Offline Share Code', 'Copy this long code to send to friends. It does not update after sending.', null, html);
         }
 
         function openShareCodeModal() {
             const html = `
-                <textarea id="import-code-input" placeholder="Paste share code here..." class="w-full h-28 bg-slate-100 dark:bg-slate-800 p-3 rounded-xl text-xs font-mono outline-none mb-2"></textarea>
-                <button onclick="importFromShareCode()" class="w-full bg-qBlue text-white font-bold py-2 rounded-xl text-sm">Import Set</button>
+                <textarea id="import-code-input" placeholder="Paste a link, short code, or offline code..." class="w-full h-28 bg-slate-100 dark:bg-slate-800 p-3 rounded-xl text-xs font-mono outline-none mb-2 select-text"></textarea>
+                <button onclick="importFromShareCode()" class="w-full bg-qBlue text-white font-bold py-2 rounded-xl text-sm">Open Set</button>
             `;
-            showModal('Import Share Code', 'Paste a QuizIt share code below.', null, html);
+            showModal('Open a Link or Code', 'Paste a QuizIt link, a short code (like username/bio101), or an offline share code.', null, html);
         }
 
         function importFromShareCode() {
-            const code = document.getElementById('import-code-input').value.trim();
+            const input = document.getElementById('import-code-input').value.trim();
+            if (!input) return;
+            const link = input.length < 300 ? parseLinkToken(input) : null;
+            if (link) { closeModal(); openLinkedSet(link); return; }
             try {
-                const set = JSON.parse(decodeURIComponent(atob(code)));
-                if (!set.title || !Array.isArray(set.terms)) throw new Error();
+                const set = JSON.parse(decodeURIComponent(atob(input)));
+                if (!set || !set.title || !Array.isArray(set.terms)) throw new Error();
+                const clean = sanitizeSet(set, safeId(set.id, 'set_' + Date.now()), true);
                 const db = getDB();
-                if (!db.sets.some(s => s.id === set.id)) {
-                    db.sets.push(set);
+                if (!db.sets.some(s => s.id === clean.id)) {
+                    db.sets.push(clean);
                     saveDB(db);
                 }
                 closeModal();
                 showModal('Success', 'Study set imported successfully!');
                 window.router.navigate('library');
             } catch (err) {
-                showModal('Error', 'Invalid share code format.');
+                showModal('Error', 'That does not look like a valid QuizIt link or code.');
             }
         }
 
@@ -1948,10 +2478,10 @@
                     const parsed = JSON.parse(e.target.result);
                     const db = getDB();
                     if (parsed.sets && Array.isArray(parsed.sets)) {
-                        db.sets = [...db.sets, ...parsed.sets];
-                        if (parsed.folders) db.folders = [...db.folders, ...parsed.folders];
+                        db.sets = [...db.sets, ...parsed.sets.map(s => sanitizeSet(s, safeId(s && s.id, 'set_' + Math.random().toString(36).slice(2, 10)), true))];
+                        if (Array.isArray(parsed.folders)) db.folders = [...db.folders, ...parsed.folders.map(sanitizeFolder)];
                     } else if (parsed.title && Array.isArray(parsed.terms)) {
-                        db.sets.push(parsed);
+                        db.sets.push(sanitizeSet(parsed, safeId(parsed.id, 'set_' + Date.now()), true));
                     }
                     saveDB(db);
                     closeModal();
@@ -1968,6 +2498,8 @@
             const settings = getSettings();
             applyTheme(settings.darkMode);
             window.router.navigate('dashboard');
+            if (location.hash.length > 1) handleLinkHash(); else syncLinkedSets();
+            window.addEventListener('hashchange', handleLinkHash);
         });
     </script>
 </body>
